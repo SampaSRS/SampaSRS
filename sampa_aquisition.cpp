@@ -30,17 +30,27 @@ void write_to_file(const Buffer &buffer, std::ofstream &file) {
 
 class SampaAquisition {
 public:
-  SampaAquisition(const std::string &file_prefix, const std::string &network,
+  SampaAquisition(const std::string &file_prefix, const std::string &address,
                   int port = 6006, size_t buffer_size = 2000000)
-      : m_file_prefix(file_prefix), m_network(network), m_port(port),
+      : m_file_prefix(file_prefix), m_address(address), m_port(port),
         m_network_buffer(std::max(buffer_size, size_t(100000))) {}
 
   void reader_task() {
+    // Find interface do listen
+    NetworkInterface iface;
+    if (m_address.empty()) {
+      iface = NetworkInterface::default_interface().name();
+    } else {
+      IPv4Address to_resolve(m_address);
+      iface = NetworkInterface(to_resolve).name();
+    }
+    std::wcout << "Listening to interface: " << iface.friendly_name() << "\n";
+
     // Sniff on interface
     SnifferConfiguration config;
     auto filter = fmt::format("udp port {}", m_port);
     config.set_filter(filter);
-    Sniffer sniffer(m_network, config);
+    Sniffer sniffer(iface.name(), config);
     sniffer.set_timeout(10);
 
     while (m_keep_acquisition) {
@@ -106,7 +116,8 @@ public:
       // Synchronized section, this code section will block the reader task
       {
         std::unique_lock<std::mutex> lock(m_buffer_access);
-        // Wait until for the buffer to enough elements then we acquire the lock
+        // Wait until for the buffer to enough elements then we acquire the
+        // lock
         auto waiting_timer = fast_clock::now();
         m_buffer_ready.wait_for(lock, std::chrono::seconds(1), [&] {
           return m_network_buffer.size() >= min_packets;
@@ -188,8 +199,8 @@ public:
   }
 
 private:
-  std::string m_network;
   std::string m_file_prefix;
+  std::string m_address;
   int m_port;
   Buffer m_network_buffer;
   std::mutex m_buffer_access{};
@@ -204,11 +215,11 @@ int main(int argc, const char *argv[]) {
     file_prefix = argv[1];
   }
 
-  std::string network_interface = "lo";
+  std::string address = "";
   if (argc > 2) {
-    network_interface = argv[2];
+    address = argv[2];
   }
 
-  SampaAquisition sampa(file_prefix, network_interface);
+  SampaAquisition sampa(file_prefix, address);
   sampa.run();
 }
