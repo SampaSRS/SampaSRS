@@ -22,7 +22,7 @@ using Buffer = cb::circular_buffer<payload_data>;
 template <typename Buffer>
 void write_to_file(const Buffer &buffer, std::ofstream &file) {
   for (size_t i = 0; i < buffer.size(); ++i) {
-    file.write(reinterpret_cast<const char *>(&buffer[i]),
+    file.write(reinterpret_cast<const char *>(buffer[i].data()),
                static_cast<long>(buffer[i].size()));
   }
 }
