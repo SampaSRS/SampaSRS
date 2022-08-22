@@ -2,6 +2,7 @@
 #include <fmt/core.h>
 #include <tins/tins.h>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>

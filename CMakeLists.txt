@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(WIN32)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Windows build")
     set(LIBTINS_BUILD_SHARED OFF CACHE BOOL "Windows build")
-    add_compile_definitions(TINS_STATIC)
+    add_compile_definitions(TINS_STATIC NOMINMAX)
 endif()
 
 set(LIBTINS_ENABLE_ACK_TRACKER OFF CACHE BOOL "No boost")
@@ -42,7 +42,7 @@ FetchContent_MakeAvailable(circular_buffer)
 
 find_package(Threads REQUIRED)
 add_executable(sampa_aquisition sampa_aquisition.cpp)
-target_include_directories(sampa_aquisition PRIVATE ${libtins_SOURCE_DIR}/include ${circular_buffer_SOURCE_DIR}/include)
+target_include_directories(sampa_aquisition PRIVATE ${libtins_SOURCE_DIR}/include ${PCAP_INCLUDE_DIR} ${circular_buffer_SOURCE_DIR}/include)
 target_link_libraries(sampa_aquisition PRIVATE tins ${CMAKE_THREAD_LIBS_INIT} fmt::fmt)
 
 add_executable(fake_packets fake_packets.cpp)
