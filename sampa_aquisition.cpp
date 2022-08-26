@@ -1,4 +1,4 @@
-#include <circular_buffer.hpp>
+#include <boost/circular_buffer.hpp>
 #include <fmt/core.h>
 #include <tins/tins.h>
 
@@ -18,7 +18,7 @@ using namespace Tins;
 using sc = std::chrono::steady_clock;
 using fast_clock = std::chrono::high_resolution_clock;
 using payload_data = std::vector<uint8_t>;
-using Buffer = cb::circular_buffer<payload_data>;
+using Buffer = boost::circular_buffer<payload_data>;
 
 template <typename Buffer>
 void write_to_file(const Buffer &buffer, std::ofstream &file) {

@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     mb_per_second = std::stof(argv[2]);
   }
 
-  PacketSender sender(argv[1], 6006);
+  sampa::PacketSender sender(argv[1], 6006);
   std::cout << "Connected\n";
 
   std::vector<uint8_t> payload(1032, 0);
