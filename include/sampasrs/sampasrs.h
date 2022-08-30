@@ -1,4 +1,4 @@
-#include "sampasrs.h"
+#include <boost/asio.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/endian/conversion.hpp>
 #include <fmt/core.h>
@@ -7,18 +7,67 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
+namespace sampasrs {
+
+using namespace Tins;
 using payload_data = std::vector<uint8_t>;
+
+class PacketSender {
+  using udp = boost::asio::ip::udp;
+
+public:
+  PacketSender(const std::string &address, int port)
+      : m_socket(m_io_context, udp::v4()) {
+    udp::resolver resolver(m_io_context);
+    m_endpoint =
+        *resolver.resolve(udp::v4(), address, std::to_string(port)).begin();
+  }
+
+  void send(const uint8_t *ptr, size_t size) {
+    try {
+      m_socket.send_to(boost::asio::buffer(ptr, size), m_endpoint);
+    } catch (std::exception &e) {
+      std::cerr << e.what() << "\n";
+    }
+  }
+
+  void send(const std::vector<uint8_t> &payload) {
+    try {
+      m_socket.send_to(boost::asio::buffer(payload), m_endpoint);
+    } catch (std::exception &e) {
+      std::cerr << e.what() << "\n";
+    }
+  }
+
+private:
+  boost::asio::io_context m_io_context{};
+  udp::socket m_socket;
+  udp::endpoint m_endpoint;
+};
+
+template <typename Buffer>
+void write_to_file(const Buffer &buffer, std::ofstream &file) {
+  for (size_t i = 0; i < buffer.size(); ++i) {
+    file.write(reinterpret_cast<const char *>(buffer[i].data()),
+               static_cast<long>(buffer[i].size()));
+  }
+}
 
 template <typename T, unsigned char start, unsigned char end>
 constexpr T get_bit_range(const T input) {
@@ -49,6 +98,7 @@ struct Hit {
   enum : uint8_t { DATA = 0, HEADER = 1, END = 2, TRIGTOOEARLY = 3 };
 
   uint8_t pk() const { return bit_range<62, 64>(); }
+  // Queue index from 1 to 16
   uint8_t queue() const { return bit_range<52, 58>(); }
   // Queue index from 0 to 15
   uint8_t queue_index() const { return queue() - 1; }
@@ -367,7 +417,7 @@ private:
   }
 
   static void store_hit(Queue &queue, Hit hit) {
-    // We missed this queue header, we will ignore this hit
+    // We missed the queue header, we will ignore this hit
     if (!queue.is_open) {
       return;
     }
@@ -379,7 +429,7 @@ private:
       return;
     }
 
-    // store hit in the corresponding
+    // store hit in the corresponding event
     queue.event->hits[queue.next_index] = hit;
     ++queue.next_index;
     --queue.remaining_hits;
@@ -431,55 +481,190 @@ private:
   std::function<void(Event)> m_event_handler;
 };
 
-int main(int argc, const char *argv[]) {
-  using namespace Tins;
+class Aquisition {
+  using sc = std::chrono::steady_clock;
+  using fast_clock = std::chrono::high_resolution_clock;
+  using Buffer = boost::circular_buffer<payload_data>;
 
-  std::string file_name = "../example_data/Run15.pcapng";
-  if (argc > 1) {
-    file_name = argv[1];
-  }
-  FileSniffer sniffer(file_name);
+public:
+  Aquisition(const std::string &file_prefix, const std::string &address,
+             int port = 6006, size_t buffer_size = 2000000)
+      : m_file_prefix(file_prefix), m_address(address), m_port(port),
+        m_network_buffer(std::max(buffer_size, size_t(100000))) {}
 
-  size_t n_events = 0;
-  std::ofstream out_file("output.txt");
-
-  auto event_handler = [&](Event event) {
-    for (auto hit : event.hits) {
-      std::string line;
-      if (hit.pk() == Hit::HEADER) {
-        line = fmt::format(
-            "Pk {} Queue {:2d} Bx_count {} Word_count {} "
-            "Ch_addr {:2d} sampa_addr {:2d} Header_par {} Data_par {} Hamming "
-            "{}\n",
-            hit.pk(), hit.queue(), hit.bx_count(), hit.word_count(),
-            hit.channel_addr(), hit.sampa_addr(), hit.header_parity(),
-            hit.data_parity(), hit.hamming());
-        std::cout << line;
-        if (!hit.valid_header_parity()) {
-          std::cout << "########### ERROR IN PARITY #########\n";
-        }
-      } else {
-        auto parity = hit.compute_data_parity();
-        line = fmt::format("Pk {} Queue {:2d} Words {:4d} {:4d} {:4d} {:4d} "
-                           "{:4d} Full {:d}\n",
-                           hit.pk(), hit.queue(), hit.word0(), hit.word1(),
-                           hit.word2(), hit.word3(), hit.word4(), hit.full());
-      }
-      out_file << line;
+  void reader_task() {
+    // Find interface do listen
+    NetworkInterface iface;
+    if (m_address.empty()) {
+      iface = NetworkInterface::default_interface().name();
+    } else {
+      IPv4Address to_resolve(m_address);
+      iface = NetworkInterface(to_resolve).name();
     }
-    ++n_events;
-  };
+    std::wcout << "Listening to interface: " << iface.friendly_name() << "\n";
 
-  EventSorter sorter(event_handler);
+    // Sniff on interface
+    SnifferConfiguration config;
+    auto filter = fmt::format("udp port {}", m_port);
+    config.set_filter(filter);
+    Sniffer sniffer(iface.name(), config);
+    sniffer.set_timeout(10);
 
-  auto sniffer_callback = [&](PDU &pdu) {
-    auto &data = pdu.rfind_pdu<RawPDU>().payload();
-    Payload payload(data);
-    sorter.process(payload);
-    return true;
-  };
+    while (m_keep_acquisition) {
+      Packet packet = sniffer.next_packet();
+      if (!packet) {
+        // Error reading packet
+        continue;
+      }
+      auto &payload = packet.pdu()->rfind_pdu<RawPDU>().payload();
 
-  sniffer.sniff_loop(sniffer_callback);
-  std::cout << "Valid events " << n_events << "\n";
-  std::cout << "Total events " << sorter.get_processed_events() << "\n";
+      // FIXME: the SRS docs says we can get frame trails of just 4 bytes:
+      // 0xfafafafa
+      // TODO: allow variable size packets
+      if (payload.size() == 1032) {
+        {
+          std::lock_guard<std::mutex> lock(m_buffer_access);
+          m_network_buffer.push_back(std::move(payload));
+        }
+        m_buffer_ready.notify_all();
+      }
+    }
+  }
+
+  std::string next_file_name() {
+    auto file_name = fmt::format("{}.{:04d}.raw", m_file_prefix, m_file_count);
+    ++m_file_count;
+    return file_name;
+  }
+
+  void writer_task() {
+    // min/max packets to write to file at once
+    const size_t min_packets = 50;
+    const size_t max_packets = 10000;
+    const size_t file_packets_limit = size_t(2) << 20U; // ~2 GB
+    auto packets_saved = std::numeric_limits<unsigned int>::max();
+
+    std::vector<payload_data> file_buffer;
+    file_buffer.reserve(max_packets);
+    std::ofstream file;
+
+    const float to_mb = 1 / 1024. / 1024.;
+    size_t bytes_received = 0;
+    size_t packets_received = 0;
+    double waiting_duration = 0;
+    double writing_duration = 0;
+    auto info_timer = sc::now();
+
+    while (m_keep_acquisition) {
+      // Create a new file if the previous one exceeded the max size
+      if (packets_saved > file_packets_limit) {
+        if (file.is_open()) {
+          file.close();
+        }
+        packets_saved = 0;
+
+        auto file_name = next_file_name();
+        fmt::print("Writing to {}\n", file_name);
+        file.open(file_name, std::ios::binary);
+        if (!file) {
+          throw std::runtime_error("Unable to create output file.");
+        }
+      }
+
+      // Synchronized section, this code section will block the reader task
+      {
+        std::unique_lock<std::mutex> lock(m_buffer_access);
+        // Wait until for the buffer to enough elements then we acquire the
+        // lock
+        auto waiting_timer = fast_clock::now();
+        m_buffer_ready.wait_for(lock, std::chrono::seconds(1), [&] {
+          return m_network_buffer.size() >= min_packets;
+        });
+        waiting_duration +=
+            std::chrono::duration<double>(fast_clock::now() - waiting_timer)
+                .count();
+
+        if (m_network_buffer.empty()) {
+          continue;
+        }
+
+        // Get payloads to write
+        const size_t payload_count =
+            std::min(m_network_buffer.size(), file_buffer.capacity());
+        for (int i = 0; i < payload_count; ++i) {
+          bytes_received += m_network_buffer.front().size();
+          file_buffer.emplace_back(std::move(m_network_buffer.front()));
+          m_network_buffer.pop_front();
+        }
+        packets_received += payload_count;
+        packets_saved += payload_count;
+      }
+
+      // Write to file
+      auto writing_timer = fast_clock::now();
+      write_to_file(file_buffer, file);
+      writing_duration +=
+          std::chrono::duration<double>(fast_clock::now() - writing_timer)
+              .count();
+
+      file_buffer.clear();
+
+      // Print info
+      const auto next_info_timer = sc::now();
+      const auto info_duration =
+          std::chrono::duration<float>(next_info_timer - info_timer).count();
+      if (info_duration > 1) {
+        const float write_rate =
+            static_cast<float>(bytes_received) * to_mb / info_duration;
+        const float buffer_usage =
+            static_cast<float>(m_network_buffer.size()) /
+            static_cast<float>(m_network_buffer.capacity()) * 100;
+        const double write_ratio =
+            writing_duration / (writing_duration + waiting_duration) * 100;
+
+        fmt::print(
+            "{} - {:.1f} MB/s - buffer usage {:.1f} % - Write time {:.1f} %\n",
+            packets_received, write_rate, buffer_usage, write_ratio);
+
+        info_timer = next_info_timer;
+        bytes_received = 0;
+        waiting_duration = 0;
+        writing_duration = 0;
+      }
+    }
+    fmt::print("Writing buffer to file....\n");
+    // Write remaining payloads in the buffer
+    write_to_file(m_network_buffer, file);
+    fmt::print("Done\n");
+  }
+
+  void run() {
+    std::thread writer(&Aquisition::writer_task, this);
+    std::thread reader(&Aquisition::reader_task, this);
+
+    for (;;) {
+      const auto key = std::cin.get();
+      if (key == 'x') {
+        m_keep_acquisition = false;
+        fmt::print("Exiting\n");
+        break;
+      }
+    }
+
+    // TODO: find a way to stop the sniff loop
+    // reader.join();
+    writer.join();
+  }
+
+private:
+  std::string m_file_prefix;
+  std::string m_address;
+  int m_port;
+  Buffer m_network_buffer;
+  std::mutex m_buffer_access{};
+  std::condition_variable m_buffer_ready{};
+  int m_file_count = 0;
+  bool m_keep_acquisition = true;
 };
+
+} // namespace sampasrs

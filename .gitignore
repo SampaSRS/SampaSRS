@@ -8,6 +8,9 @@ build*
 # clangd
 .cache
 
+# vscode
+.vscode
+
 # Created by https://www.toptal.com/developers/gitignore/api/c,c++,cmake,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=c,c++,cmake,visualstudiocode
 
