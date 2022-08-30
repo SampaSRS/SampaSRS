@@ -5,6 +5,13 @@ project(sampasrs LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(SAMPA_NATIVE_OPTIMIZATION ON "Target native architecture if supported by the compiler")
+
+if(SAMPA_NATIVE_OPTIMIZATION AND NOT MSVC)
+    add_compile_options(-march=native)
+endif()
+
+# Install dependencies
 include(cmake/Deps.cmake)
 
 find_package(Threads REQUIRED)

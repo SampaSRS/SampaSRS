@@ -83,7 +83,7 @@ public:
     // min/max packets to write to file at once
     const size_t min_packets = 50;
     const size_t max_packets = 10000;
-    const size_t file_packets_limit = 2 << 20; // ~2 GB
+    const size_t file_packets_limit = size_t(2) << 20U; // ~2 GB
     auto packets_saved = std::numeric_limits<unsigned int>::max();
 
     std::vector<payload_data> file_buffer;
@@ -215,7 +215,7 @@ int main(int argc, const char *argv[]) {
     file_prefix = argv[1];
   }
 
-  std::string address = "";
+  std::string address{};
   if (argc > 2) {
     address = argv[2];
   }
