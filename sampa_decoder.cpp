@@ -25,17 +25,12 @@ int main(int argc, const char *argv[]) {
     for (auto hit : event.hits) {
       std::string line;
       if (hit.pk() == Hit::HEADER) {
-        line = fmt::format(
-            "Pk {} Queue {:2d} Bx_count {} Word_count {} "
-            "Ch_addr {:2d} sampa_addr {:2d} Header_par {} Data_par {} Hamming "
-            "{}\n",
-            hit.pk(), hit.queue(), hit.bx_count(), hit.word_count(),
-            hit.channel_addr(), hit.sampa_addr(), hit.header_parity(),
-            hit.data_parity(), hit.hamming());
+        line =
+            fmt::format("Pk {} Queue {:2d} Bx_count {} Word_count {} "
+                        "Ch_addr {:2d} sampa_addr {:2d}\n",
+                        hit.pk(), hit.queue(), hit.bx_count(), hit.word_count(),
+                        hit.channel_addr(), hit.sampa_addr());
         std::cout << line;
-        if (!hit.valid_header_parity()) {
-          std::cout << "########### ERROR IN PARITY #########\n";
-        }
       } else {
         auto parity = hit.compute_data_parity();
         line = fmt::format("Pk {} Queue {:2d} Words {:4d} {:4d} {:4d} {:4d} "

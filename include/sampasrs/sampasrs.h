@@ -1,5 +1,6 @@
 #include <boost/asio.hpp>
 #include <boost/circular_buffer.hpp>
+#include <boost/core/bit.hpp>
 #include <boost/endian/conversion.hpp>
 #include <fmt/core.h>
 #include <tins/tins.h>
@@ -148,43 +149,41 @@ struct Hit {
     }
   }
 
-  bool check_header_integrity() const {
-    return valid_header_parity() && valid_hamming_code();
+  // Convert between the Hamming code bit position to the actual header bit
+  // position
+  static uint8_t hamming_to_real_index(uint8_t index) {
+    const auto most_significant_bit = 8 - boost::core::countl_zero(index);
+    const bool is_parity_bit = boost::core::has_single_bit(index);
+
+    if (is_parity_bit) {
+      return most_significant_bit - 1;
+    }
+
+    index += 6 - most_significant_bit;
+    // Ignore unused bits 30 and 31
+    if (index > 29) {
+      index += 2;
+    }
+    return index;
   }
 
-  // Check the header parity bit
-  // \return true if the header is ok
-  bool valid_header_parity() const {
-    static constexpr uint64_t mask =
-        ((uint64_t{1} << 52U) - 1) ^ (uint64_t(0b11) << 30U);
-    // The parity will always be even when we include the parity bit
-    return odd_parity(data & mask) == 0;
-  }
+  // Check header integrity using Hamming code
+  bool check_header_integrity(bool do_correction = false) {
+    using bitmask = std::bitset<64>;
+    static constexpr uint8_t hamming_code_size = 50;
 
-  // Check header integrity using Hamming code, but no correction is done
-  bool valid_hamming_code() const {
     // Generate Hamming code masks
     // see: https://en.wikipedia.org/wiki/Hamming_code#General_algorithm
     static const auto masks = []() {
-      using bitmask = std::bitset<64>;
-      std::array<uint64_t, hamming_code_size> masks{};
+      std::array<uint64_t, hamming_parity_bits> masks{};
 
       for (size_t pow = 0; pow < masks.size(); ++pow) {
-        size_t base = 1U << pow;
-        bitmask mask = 0;
-        mask[pow] = true;
-        for (size_t code_index = 1, data_index = 7; data_index < 52;
+        auto base = 1U << pow;
+        bitmask mask = 0U;
+        for (uint8_t code_index = 1; code_index < hamming_code_size;
              ++code_index) {
-          // bits 30 and 31 are not in use
-          if (data_index == 30) {
-            data_index += 2;
-          }
-          // Jump base bits
-          if (bitmask(code_index).count() == 1) {
-            continue;
-          }
+          auto data_index = hamming_to_real_index(code_index);
           mask[data_index] = ((code_index & base) != 0);
-          ++data_index;
         }
         masks[pow] = mask.to_ulong();
       }
@@ -199,12 +198,35 @@ struct Hit {
       syndrome += parity << i;
     }
 
-    // TODO: Fix single bit error
+    static constexpr uint64_t overall_parity_mask =
+        ((uint64_t{1} << 52U) - 1) ^ (uint64_t(0b11) << 30U);
+    // The parity will always be even when we include the parity bit
+    const auto overall_parity = odd_parity(data & overall_parity_mask);
 
-    return syndrome == 0;
+    if (!do_correction) {
+      return overall_parity == 0 && syndrome == 0;
+    }
+
+    // No error
+    if (overall_parity == 0 && syndrome == 0) {
+      return true;
+    }
+
+    // More than one error, dont correct
+    if (overall_parity == 0 && syndrome != 0) {
+      return false;
+    }
+
+    // Fix single bit error
+    if (overall_parity == 1 && syndrome < hamming_code_size) {
+      auto bit_in_error = hamming_to_real_index(syndrome);
+      data = bitmask(data).flip(bit_in_error).to_ulong();
+      return true;
+    }
+    return false;
   }
 
-  // return true for odd parity
+  // return odd parity of data hit
   uint8_t compute_data_parity(uint8_t words = 5) const {
     static constexpr uint64_t mask = []() {
       uint64_t mask = (uint64_t{1} << 52U) - 1;
@@ -231,7 +253,7 @@ struct Hit {
 
   static constexpr uint8_t words_per_hit = 5;
   static constexpr uint8_t bits_per_word = 10;
-  static constexpr uint8_t hamming_code_size = 6;
+  static constexpr uint8_t hamming_parity_bits = 6;
   uint64_t data;
 };
 
@@ -276,37 +298,40 @@ private:
   size_t m_hit_idx = hit_start_pos;
 };
 
-struct WaveForm {
-  WaveForm(const uint64_t *data, size_t size) : m_data{data}, m_size{size} {
-    m_size = Hit(m_data[0]).hit_count();
-  }
-  Hit header() const { return Hit(m_data[0]); }
-  uint16_t operator[](size_t idx) const {
-    return Hit(m_data[1 + idx / Hit::words_per_hit])
-        .word(idx % Hit::words_per_hit);
-  }
-  size_t size() const { return m_size; }
-
-private:
-  const uint64_t *m_data;
-  size_t m_size;
-};
-
 struct Event {
   std::vector<Hit> hits{};
-  int channel_count = 0; // Number of channels in this event
+  std::vector<size_t> channels_start{};
   uint32_t bx_count = 0;
   short open_queues = 0; // Number of channels receiving data
   bool valid = true;
-  bool empty() const { return channel_count == 0; }
+
+  Hit header(size_t channel) const { return hits[channels_start[channel]]; }
+
+  size_t channel_words(size_t channel) const {
+    return header(channel).word_count();
+  }
+
+  uint16_t waveform(size_t channel, size_t word) const { // NOLINT
+    auto i = channels_start[channel];
+    return hits[1 + i / Hit::words_per_hit].word(i % Hit::words_per_hit);
+  }
+
+  size_t channel_count() const { return channels_start.size(); }
+
+  size_t add_channel(short channel_hits) {
+    channels_start.push_back(hits.size());
+    hits.resize(hits.size() + channel_hits, Hit{uint64_t(0)});
+    return channels_start.back();
+  }
 };
 
 class EventSorter {
 public:
   static constexpr size_t queue_size = 16;
 
-  explicit EventSorter(const std::function<void(Event)> &event_handler)
-      : m_event_handler(event_handler) {}
+  explicit EventSorter(const std::function<void(Event)> &event_handler,
+                       bool fix_header = false)
+      : m_event_handler(event_handler), m_try_header_fix(fix_header) {}
 
   void process(Payload &payload) {
     ++m_processed_payloads;
@@ -334,10 +359,10 @@ public:
 
 private:
   struct Queue {
-    Event *event = nullptr;      // event it belongs to
-    unsigned int next_index = 0; // where to store new queue data in the event
+    Event *event = nullptr; // event it belongs to
     short remaining_hits =
         0; // Expected number of hits until the end of the queue
+    unsigned int next_index = 0; // where to store new queue data in the event
     bool is_open = false;
     uint8_t data_parity = 0;
     uint8_t expected_data_parity{};
@@ -355,7 +380,7 @@ private:
 
     switch (hit.pk()) {
     case Hit::HEADER: {
-      if (!hit.check_header_integrity()) {
+      if (!hit.check_header_integrity(m_try_header_fix)) {
         break;
       }
       auto bx_count = hit.bx_count();
@@ -401,8 +426,8 @@ private:
     }
 
     queue.event = &new_event;
-    queue.next_index = new_event.hits.size();
     queue.remaining_hits = hit.hit_count();
+    queue.next_index = new_event.add_channel(queue.remaining_hits);
     queue.is_open = true;
     queue.data_parity = 0;
     queue.expected_data_parity = hit.data_parity();
@@ -411,8 +436,6 @@ private:
       queue.words_in_last_hit = Hit::words_per_hit;
     }
 
-    ++new_event.channel_count;
-    new_event.hits.resize(new_event.hits.size() + queue.remaining_hits);
     store_hit(queue, hit);
   }
 
@@ -479,6 +502,7 @@ private:
   size_t m_processed_events = 0;
   size_t m_processed_payloads = 0;
   std::function<void(Event)> m_event_handler;
+  bool m_try_header_fix;
 };
 
 class Aquisition {
@@ -651,7 +675,7 @@ public:
       }
     }
 
-    // TODO: find a way to stop the sniff loop
+    // TODO: find a way to stop the sniffer loop
     // reader.join();
     writer.join();
   }

@@ -13,16 +13,17 @@ int main(int argc, const char *argv[]) {
   }
   std::ifstream file(file_name, std::ios::binary);
   if (!file) {
-    throw std::runtime_error("Unable to open file");
+    std::cerr << "Unable to open file\n";
+    return 1;
   }
 
-  std::array<uint8_t, 1032> payload;
+  std::array<uint8_t, 1032> payload{};
 
   uint32_t payload_count = 0;
   while (!file.eof()) {
     bool corrupted = false;
     file.read(reinterpret_cast<char *>(payload.data()), payload.size());
-    for (uint16_t i = 4, value = 0; i < payload.size(); i += 2, ++value) {
+    for (size_t i = 4, value = 0; i < payload.size(); i += 2, ++value) {
       uint16_t input_value;
       std::memcpy(&input_value, &payload[i], sizeof(input_value));
       if (input_value != value) {
