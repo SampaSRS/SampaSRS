@@ -1,4 +1,4 @@
-#include <sampasrs/sampasrs.h>
+#include <sampasrs/aquisition.h>
 
 #include <string>
 

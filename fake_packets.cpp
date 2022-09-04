@@ -1,11 +1,12 @@
 #include <fmt/core.h>
-#include <sampasrs/sampasrs.h>
+#include <sampasrs/slow_control.h>
 
 #include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using sc = std::chrono::steady_clock;
@@ -21,7 +22,7 @@ int main(int argc, char *argv[]) {
     mb_per_second = std::stof(argv[2]);
   }
 
-  sampasrs::PacketSender sender(argv[1], 6006);
+  sampasrs::PacketSender sender{};
   std::cout << "Connected\n";
 
   std::vector<uint8_t> payload(1032, 0);
@@ -42,7 +43,7 @@ int main(int argc, char *argv[]) {
   for (;;) {
     const auto start_sending = sc::now();
     for (int i = 0; i < n_repeat; ++i) {
-      sender.send(payload);
+      sender.send(argv[1], 6006, payload);
       ++sent_packets;
       std::memcpy(&payload[0], &sent_packets, sizeof(sent_packets));
     }

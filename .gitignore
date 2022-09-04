@@ -1,6 +1,7 @@
 # Test data
 test_data
 example_data
+packet_sender
 
 # Build directories
 build*

@@ -1,4 +1,5 @@
-#include <boost/asio.hpp>
+#pragma once
+
 #include <boost/circular_buffer.hpp>
 #include <boost/core/bit.hpp>
 #include <boost/endian/conversion.hpp>
@@ -28,39 +29,6 @@ namespace sampasrs {
 
 using namespace Tins;
 using payload_data = std::vector<uint8_t>;
-
-class PacketSender {
-  using udp = boost::asio::ip::udp;
-
-public:
-  PacketSender(const std::string &address, int port)
-      : m_socket(m_io_context, udp::v4()) {
-    udp::resolver resolver(m_io_context);
-    m_endpoint =
-        *resolver.resolve(udp::v4(), address, std::to_string(port)).begin();
-  }
-
-  void send(const uint8_t *ptr, size_t size) {
-    try {
-      m_socket.send_to(boost::asio::buffer(ptr, size), m_endpoint);
-    } catch (std::exception &e) {
-      std::cerr << e.what() << "\n";
-    }
-  }
-
-  void send(const std::vector<uint8_t> &payload) {
-    try {
-      m_socket.send_to(boost::asio::buffer(payload), m_endpoint);
-    } catch (std::exception &e) {
-      std::cerr << e.what() << "\n";
-    }
-  }
-
-private:
-  boost::asio::io_context m_io_context{};
-  udp::socket m_socket;
-  udp::endpoint m_endpoint;
-};
 
 template <typename Buffer>
 void write_to_file(const Buffer &buffer, std::ofstream &file) {
@@ -125,14 +93,14 @@ struct Hit {
   }
 
   // Data fields
-  uint16_t word4() const { return bit_range<42, 52>(); }
-  uint16_t word3() const { return bit_range<32, 42>(); }
   bool full() const { return bit_range<31, 32>() != 0U; }
-  uint16_t word2() const { return bit_range<20, 30>(); }
-  uint16_t word1() const { return bit_range<10, 20>(); }
-  uint16_t word0() const { return bit_range<0, 10>(); }
+  short word4() const { return static_cast<short>(bit_range<42, 52>()); }
+  short word3() const { return static_cast<short>(bit_range<32, 42>()); }
+  short word2() const { return static_cast<short>(bit_range<20, 30>()); }
+  short word1() const { return static_cast<short>(bit_range<10, 20>()); }
+  short word0() const { return static_cast<short>(bit_range<0, 10>()); }
 
-  uint16_t word(uint8_t i) const {
+  short word(uint8_t i) const {
     switch (i) {
     case 0:
       return word0();
@@ -228,7 +196,7 @@ struct Hit {
 
   // return odd parity of data hit
   uint8_t compute_data_parity(uint8_t words = 5) const {
-    static constexpr uint64_t mask = []() {
+    static const uint64_t mask = []() {
       uint64_t mask = (uint64_t{1} << 52U) - 1;
       // Ignore full and non set bits
       mask ^= uint64_t{0b11} << 30U;
@@ -261,10 +229,10 @@ class Payload {
   static constexpr size_t hit_start_pos = 16;
 
 public:
-  explicit Payload(payload_data &data) : m_data(data) {}
+  explicit Payload(payload_data &&data) : m_data(std::move(data)) {}
 
   uint32_t frame_counter() const {
-    return read_from_buffer<uint32_t>(&m_data[0]);
+    return read_from_buffer<uint32_t>(&m_data[0]); // NOLINT
   }
 
   uint32_t data_id() const {
@@ -285,66 +253,84 @@ public:
     return (m_data.size() - hit_start_pos) / sizeof(Hit);
   }
 
-  Hit next_hit() {
-    Hit hit(&m_data[m_hit_idx]);
-    m_hit_idx += sizeof(Hit);
-    return hit;
+  Hit hit(size_t i) const {
+    const auto index = i * sizeof(Hit) + hit_start_pos;
+    return Hit(&m_data[index]);
   }
 
-  void reset() { m_hit_idx = hit_start_pos; }
-
 private:
-  payload_data &m_data;
-  size_t m_hit_idx = hit_start_pos;
+  payload_data m_data;
 };
 
 struct Event {
   std::vector<Hit> hits{};
-  std::vector<size_t> channels_start{};
+  std::vector<size_t> waveform_begin{};
   uint32_t bx_count = 0;
   short open_queues = 0; // Number of channels receiving data
+  uint8_t fec_id = 0;
   bool valid = true;
 
-  Hit header(size_t channel) const { return hits[channels_start[channel]]; }
-
-  size_t channel_words(size_t channel) const {
-    return header(channel).word_count();
+  Hit get_header(size_t waveform) const {
+    return hits[waveform_begin[waveform]];
   }
 
-  uint16_t waveform(size_t channel, size_t word) const { // NOLINT
-    auto i = channels_start[channel];
-    return hits[1 + i / Hit::words_per_hit].word(i % Hit::words_per_hit);
+  size_t waveform_count() const { return waveform_begin.size(); }
+
+  size_t word_count(size_t waveform) const {
+    return get_header(waveform).word_count();
   }
 
-  size_t channel_count() const { return channels_start.size(); }
+  short get_word(size_t waveform, size_t word) const { // NOLINT
+    size_t hit_idx = waveform_begin[waveform] + 1 + word / Hit::words_per_hit;
+    uint8_t word_idx = word % Hit::words_per_hit;
+    return hits[hit_idx].word(word_idx);
+  }
 
-  size_t add_channel(short channel_hits) {
-    channels_start.push_back(hits.size());
-    hits.resize(hits.size() + channel_hits, Hit{uint64_t(0)});
-    return channels_start.back();
+  std::vector<short> copy_waveform(size_t waveform) const {
+    std::vector<short> data;
+    auto words = word_count(waveform);
+    data.resize(words);
+
+    for (size_t i = 0; i < words; ++i) {
+      data[i] = get_word(waveform, i);
+    }
+    return data;
+  }
+
+  size_t add_waveform(short n_hits) {
+    waveform_begin.push_back(hits.size());
+    hits.resize(hits.size() + n_hits, Hit{uint64_t(0)});
+    return waveform_begin.back();
   }
 };
 
 class EventSorter {
 public:
-  static constexpr size_t queue_size = 16;
-
   explicit EventSorter(const std::function<void(Event)> &event_handler,
                        bool fix_header = false)
       : m_event_handler(event_handler), m_try_header_fix(fix_header) {}
 
-  void process(Payload &payload) {
+  void process(const Payload &payload) {
     ++m_processed_payloads;
-    // Invalid payload
+
+    const auto data_id = payload.data_id();
     static constexpr uint32_t valid_data_id = 0x564d33U; // VM3
-    if (payload.data_id() != valid_data_id) {
-      invalidate_events();
+    static constexpr uint32_t empty_data_id = 0xcacacaU; // caca
+
+    // Ignore caca
+    if (data_id == empty_data_id) {
+      return;
+    }
+
+    // Invalid payload
+    if (data_id != valid_data_id) {
+      invalidate_all_events();
       return;
     }
 
     for (size_t i = 0; i < payload.n_hits(); ++i) {
-      auto hit = payload.next_hit();
-      process(hit);
+      auto hit = payload.hit(i);
+      process(hit, payload.fec_id());
     }
   }
 
@@ -371,7 +357,7 @@ private:
     void clear() { *this = Queue{}; }
   };
 
-  void process(Hit hit) {
+  void process(Hit hit, uint8_t fec_id) {
     auto queue_id = hit.queue_index();
     if (queue_id >= queue_size) {
       return;
@@ -385,7 +371,12 @@ private:
       }
       auto bx_count = hit.bx_count();
       auto &event = m_event_pool[hit.bx_count()];
-      event.bx_count = bx_count;
+
+      // New event
+      if (event.hits.empty()) {
+        event.bx_count = bx_count;
+        event.fec_id = fec_id;
+      }
 
       open_queue(queue, hit, event);
     } break;
@@ -419,15 +410,15 @@ private:
         queue.event->valid = false;
       }
 
-      // Check if previous event is finished
+      // Check if previous event is complete
       if (queue.event->open_queues <= 0) {
-        dump(*queue.event);
+        process(*queue.event);
       }
     }
 
     queue.event = &new_event;
     queue.remaining_hits = hit.hit_count();
-    queue.next_index = new_event.add_channel(queue.remaining_hits);
+    queue.next_index = new_event.add_waveform(queue.remaining_hits);
     queue.is_open = true;
     queue.data_parity = 0;
     queue.expected_data_parity = hit.data_parity();
@@ -478,17 +469,17 @@ private:
     queue.is_open = false;
   }
 
-  void invalidate_events() {
+  void invalidate_all_events() {
     for (auto &bx_event : m_event_pool) {
       bx_event.second.valid = false;
     }
   }
 
-  void dump(Event &event) {
+  void process(Event &event) {
     auto bx_count = event.bx_count;
-    // Ignore first and incomplete events
-    if (event.valid && m_processed_events > 3) {
-      // Process valid event
+    // Ignore initial and incomplete events
+    if ((event.valid || process_invalid_events) && m_processed_events > 3) {
+      // Process event
       m_event_handler(std::move(event));
     }
     // Remove event from pool
@@ -497,20 +488,37 @@ private:
     ++m_processed_events;
   }
 
+public:
+  bool process_invalid_events = false;
+
+private:
+  static constexpr size_t queue_size = 16;
   std::unordered_map<uint32_t, Event> m_event_pool{};
   std::array<Queue, queue_size> m_queues{}; // where to store next queue data
   size_t m_processed_events = 0;
   size_t m_processed_payloads = 0;
-  std::function<void(Event)> m_event_handler;
+  std::function<void(Event &&)> m_event_handler;
   bool m_try_header_fix;
 };
 
+// Network sniffer and raw data store
 class Aquisition {
   using sc = std::chrono::steady_clock;
   using fast_clock = std::chrono::high_resolution_clock;
   using Buffer = boost::circular_buffer<payload_data>;
 
 public:
+  struct ReadStats {
+    size_t bytes = 0;
+    size_t packets = 0;
+  };
+
+  struct WriteStats {
+    size_t bytes = 0;
+    double waiting_seconds = 0;
+    double writing_seconds = 0;
+  };
+
   Aquisition(const std::string &file_prefix, const std::string &address,
              int port = 6006, size_t buffer_size = 2000000)
       : m_file_prefix(file_prefix), m_address(address), m_port(port),
@@ -540,11 +548,12 @@ public:
         // Error reading packet
         continue;
       }
-      auto &payload = packet.pdu()->rfind_pdu<RawPDU>().payload();
+      m_read_stats.bytes += packet.pdu()->size();
 
-      // FIXME: the SRS docs says we can get frame trails of just 4 bytes:
-      // 0xfafafafa
-      // TODO: allow variable size packets
+      auto &payload = packet.pdu()->rfind_pdu<RawPDU>().payload();
+      ++m_read_stats.packets;
+
+      // TODO: allow variable size packets (is this needed?)
       if (payload.size() == 1032) {
         {
           std::lock_guard<std::mutex> lock(m_buffer_access);
@@ -572,13 +581,6 @@ public:
     file_buffer.reserve(max_packets);
     std::ofstream file;
 
-    const float to_mb = 1 / 1024. / 1024.;
-    size_t bytes_received = 0;
-    size_t packets_received = 0;
-    double waiting_duration = 0;
-    double writing_duration = 0;
-    auto info_timer = sc::now();
-
     while (m_keep_acquisition) {
       // Create a new file if the previous one exceeded the max size
       if (packets_saved > file_packets_limit) {
@@ -604,7 +606,7 @@ public:
         m_buffer_ready.wait_for(lock, std::chrono::seconds(1), [&] {
           return m_network_buffer.size() >= min_packets;
         });
-        waiting_duration +=
+        m_write_stats.waiting_seconds +=
             std::chrono::duration<double>(fast_clock::now() - waiting_timer)
                 .count();
 
@@ -616,45 +618,21 @@ public:
         const size_t payload_count =
             std::min(m_network_buffer.size(), file_buffer.capacity());
         for (int i = 0; i < payload_count; ++i) {
-          bytes_received += m_network_buffer.front().size();
+          m_write_stats.bytes += m_network_buffer.front().size();
           file_buffer.emplace_back(std::move(m_network_buffer.front()));
           m_network_buffer.pop_front();
         }
-        packets_received += payload_count;
         packets_saved += payload_count;
       }
 
       // Write to file
       auto writing_timer = fast_clock::now();
       write_to_file(file_buffer, file);
-      writing_duration +=
+      m_write_stats.writing_seconds +=
           std::chrono::duration<double>(fast_clock::now() - writing_timer)
               .count();
 
       file_buffer.clear();
-
-      // Print info
-      const auto next_info_timer = sc::now();
-      const auto info_duration =
-          std::chrono::duration<float>(next_info_timer - info_timer).count();
-      if (info_duration > 1) {
-        const float write_rate =
-            static_cast<float>(bytes_received) * to_mb / info_duration;
-        const float buffer_usage =
-            static_cast<float>(m_network_buffer.size()) /
-            static_cast<float>(m_network_buffer.capacity()) * 100;
-        const double write_ratio =
-            writing_duration / (writing_duration + waiting_duration) * 100;
-
-        fmt::print(
-            "{} - {:.1f} MB/s - buffer usage {:.1f} % - Write time {:.1f} %\n",
-            packets_received, write_rate, buffer_usage, write_ratio);
-
-        info_timer = next_info_timer;
-        bytes_received = 0;
-        waiting_duration = 0;
-        writing_duration = 0;
-      }
     }
     fmt::print("Writing buffer to file....\n");
     // Write remaining payloads in the buffer
@@ -662,7 +640,45 @@ public:
     fmt::print("Done\n");
   }
 
+  void logger_task() {
+    ReadStats last_read_stats{};
+    WriteStats last_write_stats{};
+    auto last_time = sc::now();
+
+    while (m_keep_acquisition) {
+      auto now = sc::now();
+      auto read_stats = m_read_stats;
+      auto write_stats = m_write_stats;
+      auto dt = std::chrono::duration<double>(now - last_time).count();
+
+      auto received_mb =
+          static_cast<double>(read_stats.bytes - last_read_stats.bytes) /
+          1024. / 1024.;
+      auto read_rate = received_mb / dt;
+
+      auto buffer_usage = static_cast<double>(m_network_buffer.size()) /
+                          static_cast<double>(m_network_buffer.capacity());
+
+      auto writing_time =
+          write_stats.writing_seconds - last_write_stats.writing_seconds;
+      auto waiting_time =
+          write_stats.waiting_seconds - last_write_stats.waiting_seconds;
+      auto write_load =
+          writing_time / (waiting_time + writing_time + 1e-10) * 100.;
+
+      fmt::print("{} - {:5.1f} MB/s - buffer usage {:5.1f} % - Write load "
+                 "{:5.1f} %\n",
+                 read_stats.packets, read_rate, buffer_usage, write_load);
+
+      last_read_stats = read_stats;
+      last_write_stats = write_stats;
+      last_time = now;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+  }
+
   void run() {
+    std::thread logger(&Aquisition::logger_task, this);
     std::thread writer(&Aquisition::writer_task, this);
     std::thread reader(&Aquisition::reader_task, this);
 
@@ -675,9 +691,14 @@ public:
       }
     }
 
-    // TODO: find a way to stop the sniffer loop
-    // reader.join();
+    logger.join();
     writer.join();
+
+    // Send packet to unblock the sniffer's loop
+    PacketSender sender;
+    auto pkt = IP(m_address) / UDP(m_port) / RawPDU("tchau");
+    sender.send(pkt);
+    reader.join();
   }
 
 private:
@@ -685,6 +706,8 @@ private:
   std::string m_address;
   int m_port;
   Buffer m_network_buffer;
+  ReadStats m_read_stats{};
+  WriteStats m_write_stats{};
   std::mutex m_buffer_access{};
   std::condition_variable m_buffer_ready{};
   int m_file_count = 0;
