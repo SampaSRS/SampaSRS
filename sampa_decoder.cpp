@@ -16,10 +16,10 @@ int main(int argc, const char *argv[]) {
   using namespace Tins;
   using namespace sampasrs;
 
-  std::string file_name = "/home/badaro/Downloads/Run49.pcapng";
-  if (argc > 1) {
-    file_name = argv[1];
+  if (argc < 2) {
+    std::cerr << "Usage: sampa_decoder <input file>\n";
   }
+  std::string file_name = argv[1];
 
   // Read binary or pcap file
   auto file_extension = std::filesystem::path(file_name).extension().string();

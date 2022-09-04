@@ -241,8 +241,7 @@ public:
   }
 
   uint8_t fec_id() const {
-    auto data_fec = read_from_buffer<uint32_t>(&m_data[4]);
-    return get_bit_range<uint32_t, 0, 8>(data_fec);
+    return read_from_buffer<uint8_t>(&m_data[7]) >> 4;
   }
 
   uint32_t time() const { return read_from_buffer<uint32_t>(&m_data[8]); }
