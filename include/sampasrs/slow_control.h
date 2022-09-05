@@ -48,7 +48,8 @@ public:
         receive_from(endpoint, boost::asio::buffer(m_buffer), timeout, error);
 
     response.resize(received_bytes);
-    std::copy(m_buffer.begin(), m_buffer.end(), response.begin());
+    std::copy(m_buffer.begin(), m_buffer.begin() + received_bytes,
+              response.begin());
 
     if (error) {
       std::cout << "Receive error: " << error.message() << "\n";
@@ -201,7 +202,7 @@ public:
     bool equal_header = std::equal(payload.begin() + 1, payload.begin() + 11,
                                    m_response_payload.begin() + 1);
 
-    const int offset = 16;
+    const int offset = 20;
     bool equal_value = std::equal(payload.begin() + offset, payload.end(),
                                   m_response_payload.begin() + offset);
 

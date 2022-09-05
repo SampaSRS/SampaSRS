@@ -18,6 +18,7 @@ int main(int argc, const char *argv[]) {
 
   if (argc < 2) {
     std::cerr << "Usage: sampa_decoder <input file>\n";
+    return 1;
   }
   std::string file_name = argv[1];
 
@@ -34,12 +35,14 @@ int main(int argc, const char *argv[]) {
   uint8_t channel{};
   uint8_t sampa{};
   uint8_t fec_id{};
+  long timestamp{};
   std::vector<short> words{};
 
-  tree.Branch("bx_count", &bx_count);
-  tree.Branch("channel", &channel);
-  tree.Branch("sampa", &sampa);
-  tree.Branch("fec_id", &fec_id);
+  tree.Branch("bx_count", &bx_count, "bx_counter/i");
+  tree.Branch("channel", &channel, "channel/b");
+  tree.Branch("sampa", &sampa, "sampa/b");
+  tree.Branch("fec_id", &fec_id, "fec_id/b");
+  tree.Branch("timestamp", &timestamp, "timestamp/L");
   tree.Branch("words", &words);
 
   // TODO: Replace this with a proper tree writer
@@ -52,6 +55,7 @@ int main(int argc, const char *argv[]) {
       channel = header.channel_addr();
       sampa = header.sampa_addr();
       fec_id = event.fec_id;
+      timestamp = event.timestamp;
       words = event.copy_waveform(waveform);
       tree.Fill();
     }
@@ -95,9 +99,7 @@ int main(int argc, const char *argv[]) {
     payload_data data(payload_size, 0);
 
     while (!input_file.eof()) {
-      input_file.read(reinterpret_cast<char *>(data.data()),
-                      static_cast<long>(data.size()));
-      Payload payload(std::move(data));
+      auto payload = Payload::read(input_file);
       sorter.process(payload);
     }
   } else {
@@ -106,10 +108,10 @@ int main(int argc, const char *argv[]) {
     size_t processed_bytes = 0;
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto sniffer_callback = [&](PDU &pdu) {
-      auto &data = pdu.rfind_pdu<RawPDU>().payload();
-      processed_bytes += data.size();
-      sorter.process(Payload(std::move(data)));
+    auto sniffer_callback = [&](Packet &packet) {
+      Payload payload(std::move(packet));
+      processed_bytes += Payload::size;
+      sorter.process(payload);
       return true;
     };
     sniffer.sniff_loop(sniffer_callback);

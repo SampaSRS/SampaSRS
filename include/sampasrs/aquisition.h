@@ -30,14 +30,6 @@ namespace sampasrs {
 using namespace Tins;
 using payload_data = std::vector<uint8_t>;
 
-template <typename Buffer>
-void write_to_file(const Buffer &buffer, std::ofstream &file) {
-  for (size_t i = 0; i < buffer.size(); ++i) {
-    file.write(reinterpret_cast<const char *>(buffer[i].data()),
-               static_cast<long>(buffer[i].size()));
-  }
-}
-
 template <typename T, unsigned char start, unsigned char end>
 constexpr T get_bit_range(const T input) {
   constexpr T bit_mask = (T{1} << static_cast<uint8_t>(end - start)) - 1;
@@ -225,45 +217,65 @@ struct Hit {
   uint64_t data;
 };
 
-class Payload {
-  static constexpr size_t hit_start_pos = 16;
+struct Payload {
+  Payload() = default;
 
-public:
-  explicit Payload(payload_data &&data) : m_data(std::move(data)) {}
+  explicit Payload(payload_data &&_data, long _timestamp = 0)
+      : timestamp(_timestamp), data(std::move(_data)) {}
+
+  explicit Payload(Packet &&packet)
+      : timestamp(std::chrono::microseconds(packet.timestamp()).count()),
+        data(std::move(packet.pdu()->rfind_pdu<RawPDU>().payload())) {}
+
+  static Payload read(std::ifstream &file) {
+    Payload payload{};
+    payload.data.resize(Payload::size);
+    file.read(reinterpret_cast<char *>(&payload.timestamp),
+              sizeof(payload.timestamp));
+    file.read(reinterpret_cast<char *>(payload.data.data()),
+              static_cast<long>(payload.data.size()));
+    return payload;
+  }
+
+  void write(std::ofstream &file) const {
+    file.write(reinterpret_cast<const char *>(&timestamp), sizeof(timestamp));
+    file.write(reinterpret_cast<const char *>(data.data()),
+               static_cast<long>(data.size()));
+  }
 
   uint32_t frame_counter() const {
-    return read_from_buffer<uint32_t>(&m_data[0]); // NOLINT
+    return read_from_buffer<uint32_t>(&data[0]); // NOLINT
   }
 
   uint32_t data_id() const {
-    auto data_fec = read_from_buffer<uint32_t>(&m_data[4]);
+    auto data_fec = read_from_buffer<uint32_t>(&data[4]);
     return get_bit_range<uint32_t, 8, 32>(data_fec);
   }
 
-  uint8_t fec_id() const {
-    return read_from_buffer<uint8_t>(&m_data[7]) >> 4;
-  }
+  uint8_t fec_id() const { return read_from_buffer<uint8_t>(&data[7]) >> 4u; }
 
-  uint32_t time() const { return read_from_buffer<uint32_t>(&m_data[8]); }
+  uint32_t time() const { return read_from_buffer<uint32_t>(&data[8]); }
 
-  uint32_t overflow() const { return read_from_buffer<uint32_t>(&m_data[12]); }
+  uint32_t overflow() const { return read_from_buffer<uint32_t>(&data[12]); }
 
-  size_t n_hits() const {
-    return (m_data.size() - hit_start_pos) / sizeof(Hit);
-  }
+  size_t n_hits() const { return (data.size() - hit_start_pos) / sizeof(Hit); }
 
   Hit hit(size_t i) const {
     const auto index = i * sizeof(Hit) + hit_start_pos;
-    return Hit(&m_data[index]);
+    return Hit(&data[index]);
   }
 
-private:
-  payload_data m_data;
+  static constexpr size_t hit_start_pos = 16;
+  static constexpr size_t size = 1032;
+
+  long timestamp = 0;
+  payload_data data;
 };
 
 struct Event {
   std::vector<Hit> hits{};
   std::vector<size_t> waveform_begin{};
+  long timestamp = 0;
   uint32_t bx_count = 0;
   short open_queues = 0; // Number of channels receiving data
   uint8_t fec_id = 0;
@@ -329,7 +341,7 @@ public:
 
     for (size_t i = 0; i < payload.n_hits(); ++i) {
       auto hit = payload.hit(i);
-      process(hit, payload.fec_id());
+      process(hit, payload.fec_id(), payload.timestamp);
     }
   }
 
@@ -356,7 +368,7 @@ private:
     void clear() { *this = Queue{}; }
   };
 
-  void process(Hit hit, uint8_t fec_id) {
+  void process(Hit hit, uint8_t fec_id, long timestamp) {
     auto queue_id = hit.queue_index();
     if (queue_id >= queue_size) {
       return;
@@ -375,6 +387,7 @@ private:
       if (event.hits.empty()) {
         event.bx_count = bx_count;
         event.fec_id = fec_id;
+        event.timestamp = timestamp;
       }
 
       open_queue(queue, hit, event);
@@ -500,11 +513,18 @@ private:
   bool m_try_header_fix;
 };
 
+template <typename Buffer>
+void write_to_file(const Buffer &buffer, std::ofstream &file) {
+  for (const auto &payload : buffer) {
+    payload.write(file);
+  }
+}
+
 // Network sniffer and raw data store
 class Aquisition {
   using sc = std::chrono::steady_clock;
   using fast_clock = std::chrono::high_resolution_clock;
-  using Buffer = boost::circular_buffer<payload_data>;
+  using Buffer = boost::circular_buffer<Payload>;
 
 public:
   struct ReadStats {
@@ -549,11 +569,11 @@ public:
       }
       m_read_stats.bytes += packet.pdu()->size();
 
-      auto &payload = packet.pdu()->rfind_pdu<RawPDU>().payload();
+      Payload payload(std::move(packet));
       ++m_read_stats.packets;
 
       // TODO: allow variable size packets (is this needed?)
-      if (payload.size() == 1032) {
+      if (payload.data.size() == Payload::size) {
         {
           std::lock_guard<std::mutex> lock(m_buffer_access);
           m_network_buffer.push_back(std::move(payload));
@@ -564,7 +584,7 @@ public:
   }
 
   std::string next_file_name() {
-    auto file_name = fmt::format("{}.{:04d}.raw", m_file_prefix, m_file_count);
+    auto file_name = fmt::format("{}-{:04d}.raw", m_file_prefix, m_file_count);
     ++m_file_count;
     return file_name;
   }
@@ -576,7 +596,7 @@ public:
     const size_t file_packets_limit = size_t(2) << 20U; // ~2 GB
     auto packets_saved = std::numeric_limits<unsigned int>::max();
 
-    std::vector<payload_data> file_buffer;
+    std::vector<Payload> file_buffer;
     file_buffer.reserve(max_packets);
     std::ofstream file;
 
@@ -617,7 +637,7 @@ public:
         const size_t payload_count =
             std::min(m_network_buffer.size(), file_buffer.capacity());
         for (int i = 0; i < payload_count; ++i) {
-          m_write_stats.bytes += m_network_buffer.front().size();
+          m_write_stats.bytes += m_network_buffer.front().data.size();
           file_buffer.emplace_back(std::move(m_network_buffer.front()));
           m_network_buffer.pop_front();
         }
@@ -633,7 +653,7 @@ public:
 
       file_buffer.clear();
     }
-    fmt::print("Writing buffer to file....\n");
+    fmt::print("Writing buffer to file...\n");
     // Write remaining payloads in the buffer
     write_to_file(m_network_buffer, file);
     fmt::print("Done\n");
@@ -644,6 +664,7 @@ public:
     WriteStats last_write_stats{};
     auto last_time = sc::now();
 
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     while (m_keep_acquisition) {
       auto now = sc::now();
       auto read_stats = m_read_stats;
@@ -677,9 +698,9 @@ public:
   }
 
   void run() {
-    std::thread logger(&Aquisition::logger_task, this);
     std::thread writer(&Aquisition::writer_task, this);
     std::thread reader(&Aquisition::reader_task, this);
+    std::thread logger(&Aquisition::logger_task, this);
 
     for (;;) {
       const auto key = std::cin.get();
