@@ -244,25 +244,52 @@ struct Payload {
   }
 
   uint32_t frame_counter() const {
-    return read_from_buffer<uint32_t>(&data[0]); // NOLINT
+    return read_from_buffer<uint32_t>(&data[caca_offset]); // NOLINT
   }
 
   uint32_t data_id() const {
-    auto data_fec = read_from_buffer<uint32_t>(&data[4]);
+    auto data_fec = read_from_buffer<uint32_t>(&data[4 + caca_offset]);
     return get_bit_range<uint32_t, 8, 32>(data_fec);
   }
 
-  uint8_t fec_id() const { return read_from_buffer<uint8_t>(&data[7]) >> 4u; }
+  uint8_t fec_id() const {
+    return read_from_buffer<uint8_t>(&data[7 + caca_offset]) >> 4u;
+  }
 
-  uint32_t time() const { return read_from_buffer<uint32_t>(&data[8]); }
+  uint32_t time() const {
+    return read_from_buffer<uint32_t>(&data[8 + caca_offset]);
+  }
 
-  uint32_t overflow() const { return read_from_buffer<uint32_t>(&data[12]); }
+  uint32_t overflow() const {
+    return read_from_buffer<uint32_t>(&data[12 + caca_offset]);
+  }
 
-  size_t n_hits() const { return (data.size() - hit_start_pos) / sizeof(Hit); }
+  size_t n_hits() const {
+    return (data.size() - hit_start_pos - caca_offset) / sizeof(Hit);
+  }
 
   Hit hit(size_t i) const {
-    const auto index = i * sizeof(Hit) + hit_start_pos;
+    const auto index = i * sizeof(Hit) + hit_start_pos + caca_offset;
     return Hit(&data[index]);
+  }
+
+  // return true if the payload have any valid data to be processed
+  bool clear_caca() {
+    static constexpr uint32_t caca = 0xcacacacaU;
+    auto begin = read_from_buffer<uint32_t>(&data[4]);
+    if (begin != caca) {
+      return true;
+    }
+    auto end = read_from_buffer<uint32_t>(&data[data.size() - 4]);
+    if (end == caca) {
+      caca_offset = data.size();
+      return false;
+    }
+
+    auto first_valid = std::find_if(data.begin() + 8, data.end(),
+                                    [](auto x) { return x != uint8_t{0xca}; });
+    caca_offset = static_cast<size_t>(first_valid - data.begin());
+    return true;
   }
 
   static constexpr size_t hit_start_pos = 16;
@@ -270,6 +297,9 @@ struct Payload {
 
   long timestamp = 0;
   payload_data data;
+
+private:
+  size_t caca_offset = 0;
 };
 
 struct Event {
@@ -321,17 +351,16 @@ public:
                        bool fix_header = false)
       : m_event_handler(event_handler), m_try_header_fix(fix_header) {}
 
-  void process(const Payload &payload) {
+  void process(Payload &payload) {
     ++m_processed_payloads;
+
+    // Remove caca
+    if (!payload.clear_caca()) {
+      return;
+    }
 
     const auto data_id = payload.data_id();
     static constexpr uint32_t valid_data_id = 0x564d33U; // VM3
-    static constexpr uint32_t empty_data_id = 0xcacacaU; // caca
-
-    // Ignore caca
-    if (data_id == empty_data_id) {
-      return;
-    }
 
     // Invalid payload
     if (data_id != valid_data_id) {

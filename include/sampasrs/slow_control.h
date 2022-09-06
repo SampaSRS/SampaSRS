@@ -13,6 +13,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -181,19 +182,20 @@ public:
     m_sender.send_receive(fec_address, port, payload, m_response_payload,
                           std::chrono::milliseconds(receive_timeout));
 
-    std::cout << "Sent ";
-    for (auto byte : payload) {
-      std::cout << std::setfill('0') << std::setw(2) << std::hex
-                << (unsigned int)byte << " ";
-    }
-    std::cout << "\n";
+    // Debug output
+    // std::cout << "Sent ";
+    // for (auto byte : payload) {
+    //   std::cout << std::setfill('0') << std::setw(2) << std::hex
+    //             << (unsigned int)byte << " ";
+    // }
+    // std::cout << "\n";
 
-    std::cout << "Resp ";
-    for (auto byte : m_response_payload) {
-      std::cout << std::setfill('0') << std::setw(2) << std::hex
-                << (unsigned int)byte << " ";
-    }
-    std::cout << "\n";
+    // std::cout << "Resp ";
+    // for (auto byte : m_response_payload) {
+    //   std::cout << std::setfill('0') << std::setw(2) << std::hex
+    //             << (unsigned int)byte << " ";
+    // }
+    // std::cout << "\n";
 
     // check echo response
     if (payload.size() != m_response_payload.size()) {
@@ -206,11 +208,13 @@ public:
     bool equal_value = std::equal(payload.begin() + offset, payload.end(),
                                   m_response_payload.begin() + offset);
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(send_delay));
     return equal_header && equal_value;
   }
 
   std::string fec_address = "10.0.0.2";
   int receive_timeout = 1000; // in milliseconds
+  int send_delay = 100;       // in milliseconds
 
 private:
   static constexpr uint32_t PLACEHOLDER = 0xfacafaca;

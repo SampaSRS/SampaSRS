@@ -12,7 +12,7 @@ int main(int argc, const char *argv[]) {
   sampa.fec_address = "10.0.0.2";
   sampa.receive_timeout = 1000; // milli seconds
 
-  std::string file_name = "config.txt";
+  std::string file_name = "../example_data/config.txt";
   if (argc > 1) {
     file_name = argv[1];
   }
@@ -31,8 +31,10 @@ int main(int argc, const char *argv[]) {
       }
     }
   }
+  std::cout << "Configuration Done\n";
 
   for (;;) {
+    std::cout << "> ";
     std::cin >> command_line;
 
     if (command_line == "x" || command_line == "exit") {
@@ -42,7 +44,6 @@ int main(int argc, const char *argv[]) {
     bool ok = sampa.send_command_line(command_line);
     if (!ok) {
       std::cerr << "Error sending command\n";
-      return 1;
     }
   }
 }
