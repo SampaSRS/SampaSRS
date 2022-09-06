@@ -1,7 +1,7 @@
 #include <TFile.h>
 #include <TTree.h>
 #include <fmt/core.h>
-#include <sampasrs/aquisition.h>
+#include <sampasrs/aquisition.hpp>
 #include <tins/tins.h>
 
 #include <chrono>

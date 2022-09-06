@@ -2,7 +2,10 @@
 
 ## How to build
 
-The code has only one external dependency [libpcap](https://www.tcpdump.org/index.html).
+The code has only two external dependencies
+
+- [libpcap](https://www.tcpdump.org/index.html)
+- [ROOT](https://root.cern/)
 
 ### Ubuntu dependencies
 
