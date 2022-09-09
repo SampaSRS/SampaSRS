@@ -18,18 +18,19 @@ int main(int argc, const char *argv[]) {
   using namespace Tins;
   using namespace sampasrs;
 
-  if (argc < 2) {
-    std::cerr << "Usage: sampa_decoder <input file>\n";
+  if (argc < 3) {
+    std::cerr << "Usage: sampa_decoder <input file> <output file>\n";
     return 1;
   }
-  std::string file_name = argv[1];
+  std::string input_name = argv[1];
+  std::string output_name = argv[2];
 
   // Read binary or pcap file
-  auto file_extension = std::filesystem::path(file_name).extension().string();
+  auto file_extension = std::filesystem::path(input_name).extension().string();
   bool read_binary = file_extension == ".raw";
 
   size_t n_events = 0;
-  TFile out_file("waveform.root", "recreate");
+  TFile out_file(output_name.c_str(), "recreate");
   TTree tree("waveform", "Waveform");
 
   // Tree branches
@@ -47,9 +48,11 @@ int main(int argc, const char *argv[]) {
   tree.Branch("timestamp", &timestamp, "timestamp/L");
   tree.Branch("words", &words);
 
+  size_t output_bytes = 0;
   // TODO: Replace this with a proper tree writer
   auto save_event = [&](Event &&event) {
     ++n_events;
+    output_bytes += event.hits.size() * sizeof(Hit);
 
     for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
       const auto header = event.get_header(waveform);
@@ -68,64 +71,55 @@ int main(int argc, const char *argv[]) {
 
     // Print header info
     // for (auto hit : event.hits) {
-    //   std::string line;
-    //   if (hit.pk() == Hit::HEADER) {
-    //     line =
-    //         fmt::format("Pk {} Queue {:2d} Bx_count {} Word_count {} "
-    //                     "Ch_addr {:2d} sampa_addr {:2d}\n",
-    //                     hit.pk(), hit.queue(), hit.bx_count(),
-    //                     hit.word_count(), hit.channel_addr(),
-    //                     hit.sampa_addr());
-    //     std::cout << line;
-    //   } else {
-    //     auto parity = hit.compute_data_parity();
-    //     line = fmt::format("Pk {} Queue {:2d} Words {:4d} {:4d} {:4d} {:4d} "
-    //                        "{:4d} Full {:d}\n",
-    //                        hit.pk(), hit.queue(), hit.word0(), hit.word1(),
-    //                        hit.word2(), hit.word3(), hit.word4(),
-    //                        hit.full());
-    //   }
+    //   std::cout << hit.to_string() << "\n";
     // }
   };
 
   EventSorter sorter(save_event);
+  sorter.process_invalid_events = false;
+  sorter.do_remove_caca = true;
+
+  size_t input_bytes = 0;
+  auto start = std::chrono::high_resolution_clock::now();
 
   if (read_binary) {
     std::cout << "Reading raw file\n";
-    std::ifstream input_file(file_name, std::ios::binary);
+    std::ifstream input_file(input_name, std::ios::binary);
     if (!input_file) {
       std::cerr << "Unable to open file\n";
       return 1;
     }
-    const size_t payload_size = 1032;
-    payload_data data(payload_size, 0);
+    payload_data data(Payload::size, 0);
 
     while (!input_file.eof()) {
+      input_bytes += Payload::size;
       auto payload = Payload::read(input_file);
       sorter.process(payload);
     }
   } else {
     std::cout << "Reading pcap file\n";
-    FileSniffer sniffer(file_name);
-    size_t processed_bytes = 0;
-    auto start = std::chrono::high_resolution_clock::now();
+    FileSniffer input_file(input_name);
 
     auto sniffer_callback = [&](Packet &packet) {
       Payload payload(std::move(packet));
-      processed_bytes += Payload::size;
+      input_bytes += Payload::size;
       sorter.process(payload);
       return true;
     };
-    sniffer.sniff_loop(sniffer_callback);
-
-    auto dt = std::chrono::duration<float, std::milli>(
-                  std::chrono::high_resolution_clock::now() - start)
-                  .count();
-    std::cout << "Duration " << dt << " ms\n";
-    std::cout << "Size " << processed_bytes << " Bytes\n";
-    std::cout << ((float)processed_bytes / 1024.f / 1024.f) / dt * 1000
-              << " MB/s\n";
+    input_file.sniff_loop(sniffer_callback);
   }
+
+  auto duration = std::chrono::duration<float, std::milli>(
+                      std::chrono::high_resolution_clock::now() - start)
+                      .count();
+
+  std::cout << "Duration " << duration << " ms\n";
+  std::cout << ((float)input_bytes / 1024.f / 1024.f) / duration * 1000
+            << " MB/s\n";
+  std::cout << "Input size  " << (float)input_bytes / 1024.f / 1024.f
+            << " MB\n";
+  std::cout << "Output size " << (float)output_bytes / 1024.f / 1024.f
+            << " MB\n";
   out_file.Write();
   std::cout << "Valid events " << n_events << "\n";
   std::cout << "Total events " << sorter.get_processed_events() << "\n";

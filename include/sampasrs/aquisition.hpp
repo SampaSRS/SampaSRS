@@ -211,6 +211,25 @@ struct Hit {
     return odd_parity(masked_data);
   }
 
+  std::string to_string() const {
+    std::string out{};
+    switch (pk()) {
+    case HEADER:
+      out = fmt::format("Pk {} Queue {:2d} Bx_count {} Word_count {} "
+                        "Ch_addr {:2d} sampa_addr {:2d}",
+                        pk(), queue(), bx_count(), word_count(), channel_addr(),
+                        sampa_addr());
+      break;
+    default:
+      out = fmt::format("Pk {} Queue {:2d} Words {:4d} {:4d} {:4d} {:4d} "
+                        "{:4d} Full {:d}",
+                        pk(), queue(), word0(), word1(), word2(), word3(),
+                        word4(), full());
+      break;
+    }
+    return out;
+  }
+
   static constexpr uint8_t words_per_hit = 5;
   static constexpr uint8_t bits_per_word = 10;
   static constexpr uint8_t hamming_parity_bits = 6;
@@ -244,62 +263,42 @@ struct Payload {
   }
 
   uint32_t frame_counter() const {
-    return read_from_buffer<uint32_t>(&data[caca_offset]); // NOLINT
+    return read_from_buffer<uint32_t>(&data[header_offset]); // NOLINT
   }
 
   uint32_t data_id() const {
-    auto data_fec = read_from_buffer<uint32_t>(&data[4 + caca_offset]);
+    auto data_fec = read_from_buffer<uint32_t>(&data[4 + header_offset]);
     return get_bit_range<uint32_t, 8, 32>(data_fec);
   }
 
   uint8_t fec_id() const {
-    return read_from_buffer<uint8_t>(&data[7 + caca_offset]) >> 4u;
+    return read_from_buffer<uint8_t>(&data[7 + header_offset]) >> 4u;
   }
 
   uint32_t time() const {
-    return read_from_buffer<uint32_t>(&data[8 + caca_offset]);
+    return read_from_buffer<uint32_t>(&data[8 + header_offset]);
   }
 
   uint32_t overflow() const {
-    return read_from_buffer<uint32_t>(&data[12 + caca_offset]);
+    return read_from_buffer<uint32_t>(&data[12 + header_offset]);
   }
 
-  size_t n_hits() const {
-    return (data.size() - hit_start_pos - caca_offset) / sizeof(Hit);
-  }
+  size_t n_hits() const { return (data.size() - hit_offset) / sizeof(Hit); }
 
   Hit hit(size_t i) const {
-    const auto index = i * sizeof(Hit) + hit_start_pos + caca_offset;
+    const auto index = i * sizeof(Hit) + hit_offset;
     return Hit(&data[index]);
   }
 
-  // return true if the payload have any valid data to be processed
-  bool clear_caca() {
-    static constexpr uint32_t caca = 0xcacacacaU;
-    auto begin = read_from_buffer<uint32_t>(&data[4]);
-    if (begin != caca) {
-      return true;
-    }
-    auto end = read_from_buffer<uint32_t>(&data[data.size() - 4]);
-    if (end == caca) {
-      caca_offset = data.size();
-      return false;
-    }
-
-    auto first_valid = std::find_if(data.begin() + 8, data.end(),
-                                    [](auto x) { return x != uint8_t{0xca}; });
-    caca_offset = static_cast<size_t>(first_valid - data.begin());
-    return true;
-  }
-
-  static constexpr size_t hit_start_pos = 16;
+  static constexpr size_t header_size = 16;
   static constexpr size_t size = 1032;
 
   long timestamp = 0;
   payload_data data;
+  size_t header_offset = 0;
+  size_t hit_offset = header_size;
 
 private:
-  size_t caca_offset = 0;
 };
 
 struct Event {
@@ -354,17 +353,17 @@ public:
   void process(Payload &payload) {
     ++m_processed_payloads;
 
-    // Remove caca
-    if (!payload.clear_caca()) {
+    if (payload.data.size() < Payload::header_size) {
       return;
     }
 
-    const auto data_id = payload.data_id();
-    static constexpr uint32_t valid_data_id = 0x564d33U; // VM3
+    // Try to fix eventual alignment problems
+    if (do_remove_caca) {
+      remove_caca(payload);
+    }
 
-    // Invalid payload
-    if (data_id != valid_data_id) {
-      invalidate_all_events();
+    // Ignore invalid and empty payload
+    if (payload.data_id() != valid_data_id) {
       return;
     }
 
@@ -529,8 +528,93 @@ private:
     ++m_processed_events;
   }
 
+  void remove_caca(Payload &payload) {
+    auto &data = payload.data;
+    long header_offset = static_cast<long>(payload.header_offset);
+    long hit_offset = static_cast<long>(payload.hit_offset);
+
+    // First we ignore all the cacas
+    if (data[0] == 0xca) {
+      // we have caca at the beginning
+
+      if (data[data.size() - 1] == 0xca && data[data.size() - 2] == 0xca) {
+        // we have caca at the end, the entire packet is useless
+        return;
+      }
+
+      // Damn! the data is misaligned
+      auto first_valid = std::find_if(data.begin(), data.end(),
+                                      [](auto x) { return x != 0xcaU; });
+      header_offset = first_valid - data.begin();
+      hit_offset = header_offset + static_cast<long>(Payload::header_size);
+    }
+
+    static constexpr unsigned int min_hits = 6;
+
+    auto remaining_bytes = Payload::size - header_offset;
+    if (remaining_bytes < sizeof(Hit) * (min_hits + 1) + Payload::header_size) {
+      return;
+    }
+
+    payload.header_offset = header_offset;
+    if (payload.data_id() != valid_data_id) {
+      return;
+    }
+
+    // Then we check if the alignment didn't change
+
+    unsigned char new_alignment = 0;
+    // first we test if the previous alignment is still valid
+    if (check_alignment(data.begin() + hit_offset + m_alignment, data.end())) {
+      new_alignment = m_alignment;
+    } else {
+      // The alignment changed!
+      for (auto index = data.begin() + hit_offset;
+           !check_alignment(index, data.end()) && new_alignment < sizeof(Hit);
+           ++new_alignment, ++index) {
+      }
+
+      if (new_alignment == 8) {
+        throw std::runtime_error("DEU RUIM NO ALINHAMENTO");
+      }
+    }
+
+    int stored_leftover = static_cast<int>(sizeof(Hit)) - new_alignment;
+    if (new_alignment != 0) {
+      if (m_alignment == new_alignment) {
+        // process leftover
+        std::copy(data.begin() + hit_offset,
+                  data.begin() + hit_offset + new_alignment,
+                  m_leftover.begin() + stored_leftover);
+        process(Hit(m_leftover.data()), payload.fec_id(), payload.timestamp);
+      }
+
+      std::copy(data.end() - stored_leftover, data.end(), m_leftover.begin());
+    }
+
+    m_alignment = new_alignment;
+    payload.hit_offset = hit_offset + new_alignment;
+  }
+
+  // check if the alignment is correct using the constant bits
+  static bool check_alignment(payload_data::iterator begin,
+                              payload_data::iterator end) {
+    const auto n_hits = (end - begin) / sizeof(Hit);
+
+    bool alignment_found = true;
+    for (int i = 0; alignment_found && i < n_hits; ++i, begin += sizeof(Hit)) {
+      // TODO: we should improve the tested bits
+      // pk11110q qqqq...
+      alignment_found =
+          (*begin & 0b00000010U) == 0 && (*(begin + 4) & 0b01000000U) == 0;
+    }
+    return alignment_found;
+  }
+
 public:
   bool process_invalid_events = false;
+  bool do_remove_caca = true;
+  static constexpr uint32_t valid_data_id = 0x564d33U;
 
 private:
   static constexpr size_t queue_size = 16;
@@ -538,6 +622,8 @@ private:
   std::array<Queue, queue_size> m_queues{}; // where to store next queue data
   size_t m_processed_events = 0;
   size_t m_processed_payloads = 0;
+  unsigned char m_alignment = 0;
+  std::array<uint8_t, sizeof(Hit)> m_leftover{};
   std::function<void(Event &&)> m_event_handler;
   bool m_try_header_fix;
 };
@@ -648,8 +734,7 @@ public:
       // Synchronized section, this code section will block the reader task
       {
         std::unique_lock<std::mutex> lock(m_buffer_access);
-        // Wait until for the buffer to enough elements then we acquire the
-        // lock
+        // Wait until the buffer to have enough elements, then acquire the lock
         auto waiting_timer = fast_clock::now();
         m_buffer_ready.wait_for(lock, std::chrono::seconds(1), [&] {
           return m_network_buffer.size() >= min_packets;
@@ -682,6 +767,7 @@ public:
 
       file_buffer.clear();
     }
+
     fmt::print("Writing buffer to file...\n");
     // Write remaining payloads in the buffer
     write_to_file(m_network_buffer, file);
