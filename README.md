@@ -5,7 +5,7 @@
 The code has only two external dependencies
 
 - [libpcap](https://www.tcpdump.org/index.html)
-- [ROOT](https://root.cern/)
+- [ROOT](https://root.cern/) (6.26 or later)
 
 ### Ubuntu dependencies
 
