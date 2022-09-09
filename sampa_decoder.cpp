@@ -1,3 +1,5 @@
+#include <sampasrs/root_fix.hpp>
+
 #include <TFile.h>
 #include <TTree.h>
 #include <fmt/core.h>
