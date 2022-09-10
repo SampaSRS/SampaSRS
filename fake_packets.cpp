@@ -11,7 +11,8 @@
 
 using sc = std::chrono::steady_clock;
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[])
+{
   if (argc < 2) {
     std::cerr << "Usage: fake_packets <host> <rate in MB/s>\n";
     return 1;
@@ -22,7 +23,7 @@ int main(int argc, char *argv[]) {
     mb_per_second = std::stof(argv[2]);
   }
 
-  sampasrs::PacketSender sender{};
+  sampasrs::PacketSender sender {};
   std::cout << "Connected\n";
 
   std::vector<uint8_t> payload(1032, 0);
@@ -33,8 +34,7 @@ int main(int argc, char *argv[]) {
   }
 
   int n_repeat = 1000;
-  float repeat_mb =
-      static_cast<float>(payload.size() * n_repeat) / 1024.F / 1024.F;
+  float repeat_mb = static_cast<float>(payload.size() * n_repeat) / 1024.F / 1024.F;
   const float dt = repeat_mb / mb_per_second;
   unsigned int sent_packets = 0;
   float sent_data = 0;
@@ -58,8 +58,7 @@ int main(int argc, char *argv[]) {
       sent_data = 0;
     }
 
-    std::this_thread::sleep_until(start_sending +
-                                  std::chrono::duration<float>(dt));
+    std::this_thread::sleep_until(start_sending + std::chrono::duration<float>(dt));
   }
   return 0;
 }

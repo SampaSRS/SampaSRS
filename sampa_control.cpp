@@ -7,8 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
-int main(int argc, const char *argv[]) {
-  sampasrs::SlowControl sampa{};
+int main(int argc, const char* argv[])
+{
+  sampasrs::SlowControl sampa {};
   sampa.fec_address = "10.0.0.2";
   sampa.receive_timeout = 1000; // milli seconds
 
@@ -17,7 +18,7 @@ int main(int argc, const char *argv[]) {
     file_name = argv[1];
   }
 
-  std::string command_line{};
+  std::string command_line {};
   std::ifstream config_file(file_name);
   if (config_file) {
     std::cout << "Executing config file: " << file_name << "\n";

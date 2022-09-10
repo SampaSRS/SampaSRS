@@ -31,32 +31,47 @@ using namespace Tins;
 using payload_data = std::vector<uint8_t>;
 
 template <typename T, unsigned char start, unsigned char end>
-constexpr T get_bit_range(const T input) {
-  constexpr T bit_mask = (T{1} << static_cast<uint8_t>(end - start)) - 1;
+constexpr T get_bit_range(const T input)
+{
+  constexpr T bit_mask = (T {1} << static_cast<uint8_t>(end - start)) - 1;
   return (input >> start) & bit_mask;
 }
 
-template <typename T> T read_from_buffer(const uint8_t *ptr) {
+template <typename T>
+T read_from_buffer(const uint8_t* ptr)
+{
   T output;
   std::memcpy(&output, ptr, sizeof(T));
   boost::endian::big_to_native_inplace(output);
   return output;
 }
 
-inline uint8_t odd_parity(uint64_t word) {
+inline uint8_t odd_parity(uint64_t word)
+{
   return std::bitset<64>(word).count() % 2;
 }
 
 struct Hit {
   Hit() = default;
-  explicit Hit(uint64_t new_data) : data{new_data} {}
-  explicit Hit(const uint8_t *ptr) : data{read_from_buffer<uint64_t>(ptr)} {}
+  explicit Hit(uint64_t new_data)
+      : data {new_data}
+  {
+  }
+  explicit Hit(const uint8_t* ptr)
+      : data {read_from_buffer<uint64_t>(ptr)}
+  {
+  }
 
-  template <unsigned char start, unsigned char end> uint64_t bit_range() const {
+  template <unsigned char start, unsigned char end>
+  uint64_t bit_range() const
+  {
     return get_bit_range<uint64_t, start, end>(data);
   }
 
-  enum : uint8_t { DATA = 0, HEADER = 1, END = 2, TRIGTOOEARLY = 3 };
+  enum : uint8_t { DATA = 0,
+    HEADER = 1,
+    END = 2,
+    TRIGTOOEARLY = 3 };
 
   uint8_t pk() const { return bit_range<62, 64>(); }
   // Queue index from 1 to 16
@@ -66,7 +81,8 @@ struct Hit {
 
   // Header fields
   uint8_t data_parity() const { return bit_range<51, 52>(); }
-  uint32_t bx_count() const {
+  uint32_t bx_count() const
+  {
     return bit_range<32, 51>() << 1U | bit_range<29, 30>();
   }
   uint8_t channel_addr() const { return bit_range<24, 29>(); }
@@ -77,7 +93,8 @@ struct Hit {
   uint8_t hamming() const { return bit_range<0, 6>(); }
 
   // Number of hit data expected for this queue, including header
-  short hit_count() const {
+  short hit_count() const
+  {
     static constexpr uint16_t words_per_hit = 5;
     // Ceil integer division plus queue header
     return static_cast<short>(
@@ -92,7 +109,8 @@ struct Hit {
   short word1() const { return static_cast<short>(bit_range<10, 20>()); }
   short word0() const { return static_cast<short>(bit_range<0, 10>()); }
 
-  short word(uint8_t i) const {
+  short word(uint8_t i) const
+  {
     switch (i) {
     case 0:
       return word0();
@@ -111,7 +129,8 @@ struct Hit {
 
   // Convert between the Hamming code bit position to the actual header bit
   // position
-  static uint8_t hamming_to_real_index(uint8_t index) {
+  static uint8_t hamming_to_real_index(uint8_t index)
+  {
     const auto most_significant_bit = 8 - boost::core::countl_zero(index);
     const bool is_parity_bit = boost::core::has_single_bit(index);
 
@@ -128,14 +147,15 @@ struct Hit {
   }
 
   // Check header integrity using Hamming code
-  bool check_header_integrity(bool do_correction = false) {
+  bool check_header_integrity(bool do_correction = false)
+  {
     using bitmask = std::bitset<64>;
     static constexpr uint8_t hamming_code_size = 50;
 
     // Generate Hamming code masks
     // see: https://en.wikipedia.org/wiki/Hamming_code#General_algorithm
     static const auto masks = []() {
-      std::array<uint64_t, hamming_parity_bits> masks{};
+      std::array<uint64_t, hamming_parity_bits> masks {};
 
       for (size_t pow = 0; pow < masks.size(); ++pow) {
         auto base = 1U << pow;
@@ -158,8 +178,7 @@ struct Hit {
       syndrome += parity << i;
     }
 
-    static constexpr uint64_t overall_parity_mask =
-        ((uint64_t{1} << 52U) - 1) ^ (uint64_t(0b11) << 30U);
+    static constexpr uint64_t overall_parity_mask = ((uint64_t {1} << 52U) - 1) ^ (uint64_t(0b11) << 30U);
     // The parity will always be even when we include the parity bit
     const auto overall_parity = odd_parity(data & overall_parity_mask);
 
@@ -187,11 +206,12 @@ struct Hit {
   }
 
   // return odd parity of data hit
-  uint8_t compute_data_parity(uint8_t words = 5) const {
+  uint8_t compute_data_parity(uint8_t words = 5) const
+  {
     static const uint64_t mask = []() {
-      uint64_t mask = (uint64_t{1} << 52U) - 1;
+      uint64_t mask = (uint64_t {1} << 52U) - 1;
       // Ignore full and non set bits
-      mask ^= uint64_t{0b11} << 30U;
+      mask ^= uint64_t {0b11} << 30U;
       return mask;
     }();
 
@@ -204,27 +224,24 @@ struct Hit {
       if (words > 3) {
         bits_to_keep += 2;
       }
-      uint64_t mask = (uint64_t{1} << bits_to_keep) - 1;
+      uint64_t mask = (uint64_t {1} << bits_to_keep) - 1;
       masked_data &= mask;
     }
 
     return odd_parity(masked_data);
   }
 
-  std::string to_string() const {
-    std::string out{};
+  std::string to_string() const
+  {
+    std::string out {};
     switch (pk()) {
     case HEADER:
-      out = fmt::format("Pk {} Queue {:2d} Bx_count {} Word_count {} "
-                        "Ch_addr {:2d} sampa_addr {:2d}",
-                        pk(), queue(), bx_count(), word_count(), channel_addr(),
-                        sampa_addr());
+      out = fmt::format("Pk {} Queue {:2d} Bx_count {} Word_count {}Ch_addr {:2d} sampa_addr {:2d}",
+          pk(), queue(), bx_count(), word_count(), channel_addr(), sampa_addr());
       break;
     default:
-      out = fmt::format("Pk {} Queue {:2d} Words {:4d} {:4d} {:4d} {:4d} "
-                        "{:4d} Full {:d}",
-                        pk(), queue(), word0(), word1(), word2(), word3(),
-                        word4(), full());
+      out = fmt::format("Pk {} Queue {:2d} Words {:4d} {:4d} {:4d} {:4d} {:4d} Full {:d}",
+          pk(), queue(), word0(), word1(), word2(), word3(), word4(), full());
       break;
     }
     return out;
@@ -239,53 +256,66 @@ struct Hit {
 struct Payload {
   Payload() = default;
 
-  explicit Payload(payload_data &&_data, long _timestamp = 0)
-      : timestamp(_timestamp), data(std::move(_data)) {}
+  explicit Payload(payload_data&& _data, long _timestamp = 0)
+      : timestamp(_timestamp)
+      , data(std::move(_data))
+  {
+  }
 
-  explicit Payload(Packet &&packet)
-      : timestamp(std::chrono::microseconds(packet.timestamp()).count()),
-        data(std::move(packet.pdu()->rfind_pdu<RawPDU>().payload())) {}
+  explicit Payload(Packet&& packet)
+      : timestamp(std::chrono::microseconds(packet.timestamp()).count())
+      , data(std::move(packet.pdu()->rfind_pdu<RawPDU>().payload()))
+  {
+  }
 
-  static Payload read(std::ifstream &file) {
-    Payload payload{};
+  static Payload read(std::ifstream& file)
+  {
+    Payload payload {};
     payload.data.resize(Payload::size);
-    file.read(reinterpret_cast<char *>(&payload.timestamp),
-              sizeof(payload.timestamp));
-    file.read(reinterpret_cast<char *>(payload.data.data()),
-              static_cast<long>(payload.data.size()));
+    file.read(reinterpret_cast<char*>(&payload.timestamp),
+        sizeof(payload.timestamp));
+    file.read(reinterpret_cast<char*>(payload.data.data()),
+        static_cast<long>(payload.data.size()));
     return payload;
   }
 
-  void write(std::ofstream &file) const {
-    file.write(reinterpret_cast<const char *>(&timestamp), sizeof(timestamp));
-    file.write(reinterpret_cast<const char *>(data.data()),
-               static_cast<long>(data.size()));
+  void write(std::ofstream& file) const
+  {
+    file.write(reinterpret_cast<const char*>(&timestamp), sizeof(timestamp));
+    file.write(reinterpret_cast<const char*>(data.data()),
+        static_cast<long>(data.size()));
   }
 
-  uint32_t frame_counter() const {
+  uint32_t frame_counter() const
+  {
     return read_from_buffer<uint32_t>(&data[header_offset]); // NOLINT
   }
 
-  uint32_t data_id() const {
+  uint32_t data_id() const
+  {
     auto data_fec = read_from_buffer<uint32_t>(&data[4 + header_offset]);
     return get_bit_range<uint32_t, 8, 32>(data_fec);
   }
 
-  uint8_t fec_id() const {
+  uint8_t fec_id() const
+  {
     return read_from_buffer<uint8_t>(&data[7 + header_offset]) >> 4u;
   }
 
-  uint32_t time() const {
+  uint32_t time() const
+  {
     return read_from_buffer<uint32_t>(&data[8 + header_offset]);
   }
 
-  uint32_t overflow() const {
+  uint32_t overflow() const
+  {
     return read_from_buffer<uint32_t>(&data[12 + header_offset]);
   }
 
   size_t n_hits() const { return (data.size() - hit_offset) / sizeof(Hit); }
 
-  Hit hit(size_t i) const {
+  Hit hit(size_t i) const
+  {
     const auto index = i * sizeof(Hit) + hit_offset;
     return Hit(&data[index]);
   }
@@ -298,35 +328,39 @@ struct Payload {
   size_t header_offset = 0;
   size_t hit_offset = header_size;
 
-private:
+  private:
 };
 
 struct Event {
-  std::vector<Hit> hits{};
-  std::vector<size_t> waveform_begin{};
+  std::vector<Hit> hits {};
+  std::vector<size_t> waveform_begin {};
   long timestamp = 0;
   uint32_t bx_count = 0;
   short open_queues = 0; // Number of channels receiving data
   uint8_t fec_id = 0;
   bool valid = true;
 
-  Hit get_header(size_t waveform) const {
+  Hit get_header(size_t waveform) const
+  {
     return hits[waveform_begin[waveform]];
   }
 
   size_t waveform_count() const { return waveform_begin.size(); }
 
-  size_t word_count(size_t waveform) const {
+  size_t word_count(size_t waveform) const
+  {
     return get_header(waveform).word_count();
   }
 
-  short get_word(size_t waveform, size_t word) const { // NOLINT
+  short get_word(size_t waveform, size_t word) const
+  { // NOLINT
     size_t hit_idx = waveform_begin[waveform] + 1 + word / Hit::words_per_hit;
     uint8_t word_idx = word % Hit::words_per_hit;
     return hits[hit_idx].word(word_idx);
   }
 
-  std::vector<short> copy_waveform(size_t waveform) const {
+  std::vector<short> copy_waveform(size_t waveform) const
+  {
     std::vector<short> data;
     auto words = word_count(waveform);
     data.resize(words);
@@ -337,20 +371,23 @@ struct Event {
     return data;
   }
 
-  size_t add_waveform(short n_hits) {
+  size_t add_waveform(short n_hits)
+  {
     waveform_begin.push_back(hits.size());
-    hits.resize(hits.size() + n_hits, Hit{uint64_t(0)});
+    hits.resize(hits.size() + n_hits, Hit {uint64_t(0)});
     return waveform_begin.back();
   }
 };
 
 class EventSorter {
-public:
-  explicit EventSorter(const std::function<void(Event)> &event_handler,
-                       bool fix_header = false)
-      : m_event_handler(event_handler), m_try_header_fix(fix_header) {}
+  public:
+  explicit EventSorter(const std::function<void(Event)>& event_handler)
+      : m_event_handler(event_handler)
+  {
+  }
 
-  void process(Payload &payload) {
+  void process(Payload& payload)
+  {
     ++m_processed_payloads;
 
     if (payload.data.size() < Payload::header_size) {
@@ -358,12 +395,12 @@ public:
     }
 
     // Try to fix eventual alignment problems
-    if (do_remove_caca) {
+    if (enable_remove_caca) {
       remove_caca(payload);
     }
 
-    // Ignore invalid and empty payload
-    if (payload.data_id() != valid_data_id) {
+    // Ignore invalid and empty payloads
+    if (payload.data_id() != expected_data_id) {
       return;
     }
 
@@ -373,43 +410,44 @@ public:
     }
   }
 
-  void clear() {
+  void clear()
+  {
     m_event_pool.clear();
-    std::fill(m_queues.begin(), m_queues.end(), Queue{});
+    std::fill(m_queues.begin(), m_queues.end(), Queue {});
     m_processed_events = 0;
     m_processed_payloads = 0;
   }
 
   size_t get_processed_events() const { return m_processed_events; }
 
-private:
+  private:
   struct Queue {
-    Event *event = nullptr; // event it belongs to
-    short remaining_hits =
-        0; // Expected number of hits until the end of the queue
+    Event* event = nullptr;      // event it belongs to
+    short remaining_hits = 0;    // Expected number of hits until the end of the queue
     unsigned int next_index = 0; // where to store new queue data in the event
     bool is_open = false;
     uint8_t data_parity = 0;
-    uint8_t expected_data_parity{};
-    int words_in_last_hit{};
+    uint8_t expected_data_parity {};
+    int words_in_last_hit {};
 
-    void clear() { *this = Queue{}; }
+    void clear() { *this = Queue {}; }
   };
 
-  void process(Hit hit, uint8_t fec_id, long timestamp) {
+  void process(Hit hit, uint8_t fec_id, long timestamp)
+  {
     auto queue_id = hit.queue_index();
     if (queue_id >= queue_size) {
       return;
     }
-    auto &queue = m_queues[queue_id];
+    auto& queue = m_queues[queue_id];
 
     switch (hit.pk()) {
     case Hit::HEADER: {
-      if (!hit.check_header_integrity(m_try_header_fix)) {
+      if (!hit.check_header_integrity(enable_header_fix)) {
         break;
       }
       auto bx_count = hit.bx_count();
-      auto &event = m_event_pool[hit.bx_count()];
+      auto& event = m_event_pool[hit.bx_count()];
 
       // New event
       if (event.hits.empty()) {
@@ -440,7 +478,8 @@ private:
     }
   }
 
-  void open_queue(Queue &queue, Hit hit, Event &new_event) {
+  void open_queue(Queue& queue, Hit hit, Event& new_event)
+  {
     ++new_event.open_queues;
 
     if (queue.event != nullptr) {
@@ -470,7 +509,8 @@ private:
     store_hit(queue, hit);
   }
 
-  static void store_hit(Queue &queue, Hit hit) {
+  static void store_hit(Queue& queue, Hit hit)
+  {
     // We missed the queue header, we will ignore this hit
     if (!queue.is_open) {
       return;
@@ -500,22 +540,24 @@ private:
     }
   }
 
-  static void close_queue(Queue &queue) {
+  static void close_queue(Queue& queue)
+  {
     // Check data parity
-    if (queue.event != nullptr &&
-        (queue.data_parity != queue.expected_data_parity)) {
+    if (queue.event != nullptr && (queue.data_parity != queue.expected_data_parity)) {
       queue.event->valid = false;
     }
     queue.is_open = false;
   }
 
-  void invalidate_all_events() {
-    for (auto &bx_event : m_event_pool) {
+  void invalidate_all_events()
+  {
+    for (auto& bx_event : m_event_pool) {
       bx_event.second.valid = false;
     }
   }
 
-  void process(Event &event) {
+  void process(Event& event)
+  {
     auto bx_count = event.bx_count;
     // Ignore initial and incomplete events
     if ((event.valid || process_invalid_events) && m_processed_events > 3) {
@@ -528,8 +570,9 @@ private:
     ++m_processed_events;
   }
 
-  void remove_caca(Payload &payload) {
-    auto &data = payload.data;
+  void remove_caca(Payload& payload)
+  {
+    auto& data = payload.data;
     long header_offset = static_cast<long>(payload.header_offset);
     long hit_offset = static_cast<long>(payload.hit_offset);
 
@@ -544,7 +587,7 @@ private:
 
       // Damn! the data is misaligned
       auto first_valid = std::find_if(data.begin(), data.end(),
-                                      [](auto x) { return x != 0xcaU; });
+          [](auto x) { return x != 0xcaU; });
       header_offset = first_valid - data.begin();
       hit_offset = header_offset + static_cast<long>(Payload::header_size);
     }
@@ -557,7 +600,7 @@ private:
     }
 
     payload.header_offset = header_offset;
-    if (payload.data_id() != valid_data_id) {
+    if (payload.data_id() != expected_data_id) {
       return;
     }
 
@@ -584,8 +627,8 @@ private:
       if (m_alignment == new_alignment) {
         // process leftover
         std::copy(data.begin() + hit_offset,
-                  data.begin() + hit_offset + new_alignment,
-                  m_leftover.begin() + stored_leftover);
+            data.begin() + hit_offset + new_alignment,
+            m_leftover.begin() + stored_leftover);
         process(Hit(m_leftover.data()), payload.fec_id(), payload.timestamp);
       }
 
@@ -598,39 +641,40 @@ private:
 
   // check if the alignment is correct using the constant bits
   static bool check_alignment(payload_data::iterator begin,
-                              payload_data::iterator end) {
+      payload_data::iterator end)
+  {
     const auto n_hits = (end - begin) / sizeof(Hit);
 
     bool alignment_found = true;
     for (int i = 0; alignment_found && i < n_hits; ++i, begin += sizeof(Hit)) {
       // TODO: we should improve the tested bits
       // pk11110q qqqq...
-      alignment_found =
-          (*begin & 0b00000010U) == 0 && (*(begin + 4) & 0b01000000U) == 0;
+      alignment_found = (*begin & 0b00000010U) == 0 && (*(begin + 4) & 0b01000000U) == 0;
     }
     return alignment_found;
   }
 
-public:
-  bool process_invalid_events = false;
-  bool do_remove_caca = true;
-  static constexpr uint32_t valid_data_id = 0x564d33U;
+  public:
+  static constexpr uint32_t expected_data_id = 0x564d33U; // VM3
+  bool process_invalid_events = false;                    // The events marked invalid will also be passed to the event_handler
+  bool enable_remove_caca = true;                         // Remove the caca bytes and try to fix the misalignment cause by it
+  bool enable_header_fix = false;                         // Try to fix headers that fail the Hamming code test
 
-private:
+  private:
   static constexpr size_t queue_size = 16;
-  std::unordered_map<uint32_t, Event> m_event_pool{};
-  std::array<Queue, queue_size> m_queues{}; // where to store next queue data
+  std::unordered_map<uint32_t, Event> m_event_pool {};
+  std::array<Queue, queue_size> m_queues {}; // where to store next queue data
   size_t m_processed_events = 0;
   size_t m_processed_payloads = 0;
   unsigned char m_alignment = 0;
-  std::array<uint8_t, sizeof(Hit)> m_leftover{};
-  std::function<void(Event &&)> m_event_handler;
-  bool m_try_header_fix;
+  std::array<uint8_t, sizeof(Hit)> m_leftover {};
+  std::function<void(Event&&)> m_event_handler;
 };
 
 template <typename Buffer>
-void write_to_file(const Buffer &buffer, std::ofstream &file) {
-  for (const auto &payload : buffer) {
+void write_to_file(const Buffer& buffer, std::ofstream& file)
+{
+  for (const auto& payload : buffer) {
     payload.write(file);
   }
 }
@@ -641,7 +685,7 @@ class Aquisition {
   using fast_clock = std::chrono::high_resolution_clock;
   using Buffer = boost::circular_buffer<Payload>;
 
-public:
+  public:
   struct ReadStats {
     size_t bytes = 0;
     size_t packets = 0;
@@ -653,12 +697,16 @@ public:
     double writing_seconds = 0;
   };
 
-  Aquisition(const std::string &file_prefix, const std::string &address,
-             int port = 6006, size_t buffer_size = 2000000)
-      : m_file_prefix(file_prefix), m_address(address), m_port(port),
-        m_network_buffer(std::max(buffer_size, size_t(100000))) {}
+  Aquisition(const std::string& file_prefix, const std::string& address, int port = 6006, size_t buffer_size = 2000000)
+      : m_file_prefix(file_prefix)
+      , m_address(address)
+      , m_port(port)
+      , m_network_buffer(std::max(buffer_size, size_t(100000)))
+  {
+  }
 
-  void reader_task() {
+  void reader_task()
+  {
     // Find interface do listen
     NetworkInterface iface;
     if (m_address.empty()) {
@@ -676,7 +724,7 @@ public:
     Sniffer sniffer(iface.name(), config);
     sniffer.set_timeout(10);
 
-    while (m_keep_acquisition) {
+    while (m_is_running) {
       Packet packet = sniffer.next_packet();
       if (!packet) {
         // Error reading packet
@@ -698,13 +746,15 @@ public:
     }
   }
 
-  std::string next_file_name() {
+  std::string next_file_name()
+  {
     auto file_name = fmt::format("{}-{:04d}.raw", m_file_prefix, m_file_count);
     ++m_file_count;
     return file_name;
   }
 
-  void writer_task() {
+  void writer_task()
+  {
     // min/max packets to write to file at once
     const size_t min_packets = 50;
     const size_t max_packets = 10000;
@@ -715,7 +765,7 @@ public:
     file_buffer.reserve(max_packets);
     std::ofstream file;
 
-    while (m_keep_acquisition) {
+    while (m_is_running) {
       // Create a new file if the previous one exceeded the max size
       if (packets_saved > file_packets_limit) {
         if (file.is_open()) {
@@ -739,17 +789,15 @@ public:
         m_buffer_ready.wait_for(lock, std::chrono::seconds(1), [&] {
           return m_network_buffer.size() >= min_packets;
         });
-        m_write_stats.waiting_seconds +=
-            std::chrono::duration<double>(fast_clock::now() - waiting_timer)
-                .count();
+        m_write_stats.waiting_seconds += std::chrono::duration<double>(fast_clock::now() - waiting_timer)
+                                             .count();
 
         if (m_network_buffer.empty()) {
           continue;
         }
 
         // Get payloads to write
-        const size_t payload_count =
-            std::min(m_network_buffer.size(), file_buffer.capacity());
+        const size_t payload_count = std::min(m_network_buffer.size(), file_buffer.capacity());
         for (int i = 0; i < payload_count; ++i) {
           m_write_stats.bytes += m_network_buffer.front().data.size();
           file_buffer.emplace_back(std::move(m_network_buffer.front()));
@@ -761,9 +809,8 @@ public:
       // Write to file
       auto writing_timer = fast_clock::now();
       write_to_file(file_buffer, file);
-      m_write_stats.writing_seconds +=
-          std::chrono::duration<double>(fast_clock::now() - writing_timer)
-              .count();
+      m_write_stats.writing_seconds += std::chrono::duration<double>(fast_clock::now() - writing_timer)
+                                           .count();
 
       file_buffer.clear();
     }
@@ -774,36 +821,30 @@ public:
     fmt::print("Done\n");
   }
 
-  void logger_task() {
-    ReadStats last_read_stats{};
-    WriteStats last_write_stats{};
+  void logger_task()
+  {
+    ReadStats last_read_stats {};
+    WriteStats last_write_stats {};
     auto last_time = sc::now();
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    while (m_keep_acquisition) {
+    while (m_is_running) {
       auto now = sc::now();
       auto read_stats = m_read_stats;
       auto write_stats = m_write_stats;
       auto dt = std::chrono::duration<double>(now - last_time).count();
 
-      auto received_mb =
-          static_cast<double>(read_stats.bytes - last_read_stats.bytes) /
-          1024. / 1024.;
+      auto received_mb = static_cast<double>(read_stats.bytes - last_read_stats.bytes) / 1024. / 1024.;
       auto read_rate = received_mb / dt;
 
-      auto buffer_usage = static_cast<double>(m_network_buffer.size()) /
-                          static_cast<double>(m_network_buffer.capacity());
+      auto buffer_usage = static_cast<double>(m_network_buffer.size()) / static_cast<double>(m_network_buffer.capacity());
 
-      auto writing_time =
-          write_stats.writing_seconds - last_write_stats.writing_seconds;
-      auto waiting_time =
-          write_stats.waiting_seconds - last_write_stats.waiting_seconds;
-      auto write_load =
-          writing_time / (waiting_time + writing_time + 1e-10) * 100.;
+      auto writing_time = write_stats.writing_seconds - last_write_stats.writing_seconds;
+      auto waiting_time = write_stats.waiting_seconds - last_write_stats.waiting_seconds;
+      auto write_load = writing_time / (waiting_time + writing_time + 1e-10) * 100.;
 
-      fmt::print("{} - {:5.1f} MB/s - buffer usage {:5.1f} % - Write load "
-                 "{:5.1f} %\n",
-                 read_stats.packets, read_rate, buffer_usage, write_load);
+      fmt::print("{} - {:5.1f} MB/s - buffer usage {:5.1f} % - Write load {:5.1f} %\n",
+          read_stats.packets, read_rate, buffer_usage, write_load);
 
       last_read_stats = read_stats;
       last_write_stats = write_stats;
@@ -812,7 +853,8 @@ public:
     }
   }
 
-  void run() {
+  void run()
+  {
     std::thread writer(&Aquisition::writer_task, this);
     std::thread reader(&Aquisition::reader_task, this);
     std::thread logger(&Aquisition::logger_task, this);
@@ -820,7 +862,7 @@ public:
     for (;;) {
       const auto key = std::cin.get();
       if (key == 'x') {
-        m_keep_acquisition = false;
+        m_is_running = false;
         fmt::print("Exiting\n");
         break;
       }
@@ -836,17 +878,17 @@ public:
     reader.join();
   }
 
-private:
+  private:
   std::string m_file_prefix;
   std::string m_address;
   int m_port;
   Buffer m_network_buffer;
-  ReadStats m_read_stats{};
-  WriteStats m_write_stats{};
-  std::mutex m_buffer_access{};
-  std::condition_variable m_buffer_ready{};
+  ReadStats m_read_stats {};
+  WriteStats m_write_stats {};
+  std::mutex m_buffer_access {};
+  std::condition_variable m_buffer_ready {};
   int m_file_count = 0;
-  bool m_keep_acquisition = true;
+  bool m_is_running = true;
 };
 
 } // namespace sampasrs

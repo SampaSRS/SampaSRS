@@ -1,0 +1,8 @@
+BasedOnStyle: WebKit
+UseTab: Never
+IndentWidth: 2
+TabWidth: 2
+AlignTrailingComments: true
+AllowShortCaseLabelsOnASingleLine: true
+Cpp11BracedListStyle: true
+FixNamespaceComments: true

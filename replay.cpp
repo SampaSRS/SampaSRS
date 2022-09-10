@@ -7,7 +7,8 @@
 #include <string>
 #include <thread>
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char* argv[])
+{
   if (argc < 2) {
     std::cerr << "No file name\n";
     return 1;
@@ -18,7 +19,7 @@ int main(int argc, const char *argv[]) {
   auto now = std::chrono::steady_clock::now();
 
   Tins::PacketSender sender;
-  auto send_packets = [&](Tins::Packet &packet) {
+  auto send_packets = [&](Tins::Packet& packet) {
     auto timestamp = std::chrono::microseconds(packet.timestamp());
     if (initial_timestamp.count() == 0) {
       initial_timestamp = timestamp;

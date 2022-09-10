@@ -2,7 +2,6 @@
 
 #include <TFile.h>
 #include <TTree.h>
-#include <fmt/core.h>
 #include <sampasrs/aquisition.hpp>
 #include <tins/tins.h>
 
@@ -14,7 +13,8 @@
 #include <string>
 #include <vector>
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char* argv[])
+{
   using namespace Tins;
   using namespace sampasrs;
 
@@ -34,12 +34,12 @@ int main(int argc, const char *argv[]) {
   TTree tree("waveform", "Waveform");
 
   // Tree branches
-  uint32_t bx_count{};
-  uint8_t channel{};
-  uint8_t sampa{};
-  uint8_t fec_id{};
-  long timestamp{};
-  std::vector<short> words{};
+  uint32_t bx_count {};
+  uint8_t channel {};
+  uint8_t sampa {};
+  uint8_t fec_id {};
+  long timestamp {};
+  std::vector<short> words {};
 
   tree.Branch("bx_count", &bx_count, "bx_counter/i");
   tree.Branch("channel", &channel, "channel/b");
@@ -50,7 +50,7 @@ int main(int argc, const char *argv[]) {
 
   size_t output_bytes = 0;
   // TODO: Replace this with a proper tree writer
-  auto save_event = [&](Event &&event) {
+  auto save_event = [&](Event&& event) {
     ++n_events;
     output_bytes += event.hits.size() * sizeof(Hit);
 
@@ -77,7 +77,8 @@ int main(int argc, const char *argv[]) {
 
   EventSorter sorter(save_event);
   sorter.process_invalid_events = false;
-  sorter.do_remove_caca = true;
+  sorter.enable_remove_caca = true;
+  sorter.enable_header_fix = false;
 
   size_t input_bytes = 0;
   auto start = std::chrono::high_resolution_clock::now();
@@ -100,7 +101,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Reading pcap file\n";
     FileSniffer input_file(input_name);
 
-    auto sniffer_callback = [&](Packet &packet) {
+    auto sniffer_callback = [&](Packet& packet) {
       Payload payload(std::move(packet));
       input_bytes += Payload::size;
       sorter.process(payload);
@@ -109,18 +110,14 @@ int main(int argc, const char *argv[]) {
     input_file.sniff_loop(sniffer_callback);
   }
 
-  auto duration = std::chrono::duration<float, std::milli>(
-                      std::chrono::high_resolution_clock::now() - start)
-                      .count();
+  out_file.Write();
+
+  auto duration = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
 
   std::cout << "Duration " << duration << " ms\n";
-  std::cout << ((float)input_bytes / 1024.f / 1024.f) / duration * 1000
-            << " MB/s\n";
-  std::cout << "Input size  " << (float)input_bytes / 1024.f / 1024.f
-            << " MB\n";
-  std::cout << "Output size " << (float)output_bytes / 1024.f / 1024.f
-            << " MB\n";
-  out_file.Write();
+  std::cout << ((float)input_bytes / 1024.f / 1024.f) / duration * 1000 << " MB/s\n";
+  std::cout << "Input size  " << (float)input_bytes / 1024.f / 1024.f << " MB\n";
+  std::cout << "Output size " << (float)output_bytes / 1024.f / 1024.f << " MB\n";
   std::cout << "Valid events " << n_events << "\n";
   std::cout << "Total events " << sorter.get_processed_events() << "\n";
 };
