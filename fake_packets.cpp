@@ -1,5 +1,5 @@
 #include <fmt/core.h>
-#include <sampasrs/slow_control.hpp>
+#include <sampasrs/utils.hpp>
 
 #include <chrono>
 #include <cstddef>

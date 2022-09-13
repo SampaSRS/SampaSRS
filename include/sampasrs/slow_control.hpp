@@ -1,17 +1,19 @@
 #pragma once
 
-#include <algorithm>
-#include <boost/asio.hpp>
-#include <boost/asio/buffer.hpp>
+#include "sampasrs/utils.hpp"
+
 #include <boost/endian/conversion.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <limits>
+#include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -19,133 +21,63 @@
 
 namespace sampasrs {
 
-// Adapted from:
-// https://www.boost.org/doc/libs/1_80_0/doc/html/boost_asio/example/cpp11/timeouts/blocking_udp_client.cpp
-class PacketSender {
-  using udp = boost::asio::ip::udp;
-
-  public:
-  PacketSender()
-      : m_socket(m_io_context, udp::endpoint(udp::v4(), 6007))
-  {
-  }
-
-  udp::endpoint resolve_endpoint(const std::string& address, int port)
-  {
-    udp::resolver resolver(m_io_context);
-    return *resolver.resolve(udp::v4(), address, std::to_string(port)).begin();
-  }
-
-  void send(const std::string& address, int port,
-      const std::vector<uint8_t>& payload)
-  {
-    send(resolve_endpoint(address, port), payload);
-  }
-
-  bool send_receive(const std::string& address, int port,
-      const std::vector<uint8_t>& payload,
-      std::vector<uint8_t>& response,
-      std::chrono::steady_clock::duration timeout)
-  {
-    auto endpoint = resolve_endpoint(address, port);
-    send(endpoint, payload);
-
-    boost::system::error_code error;
-    auto received_bytes = receive_from(endpoint, boost::asio::buffer(m_buffer), timeout, error);
-
-    response.resize(received_bytes);
-    std::copy(m_buffer.begin(), m_buffer.begin() + received_bytes,
-        response.begin());
-
-    if (error) {
-      std::cout << "Receive error: " << error.message() << "\n";
-      return false;
-    }
-
-    return true;
-  }
-
-  private:
-  void send(const udp::endpoint& endpoint, const uint8_t* ptr, size_t size)
-  {
-    try {
-      m_socket.send_to(boost::asio::buffer(ptr, size), endpoint);
-    } catch (std::exception& e) {
-      std::cerr << e.what() << "\n";
-    }
-  }
-
-  void send(const udp::endpoint& endpoint,
-      const std::vector<uint8_t>& payload)
-  {
-    send(endpoint, payload.data(), payload.size());
-  }
-
-  std::size_t receive_from(udp::endpoint& endpoint,
-      const boost::asio::mutable_buffer& buffer,
-      std::chrono::steady_clock::duration timeout,
-      boost::system::error_code& error)
-  {
-
-    std::size_t length = 0;
-    m_socket.async_receive_from(boost::asio::buffer(buffer), endpoint,
-        [&error, &length](auto&& PH1, auto&& PH2) {
-          return PacketSender::handle_receive(
-              std::forward<decltype(PH1)>(PH1),
-              std::forward<decltype(PH2)>(PH2), &error,
-              &length);
-        });
-
-    run(timeout);
-
-    return length;
-  }
-  void run(std::chrono::steady_clock::duration timeout)
-  {
-    m_io_context.restart();
-    m_io_context.run_for(timeout);
-    if (!m_io_context.stopped()) {
-      // Cancel the outstanding asynchronous operation.
-      m_socket.cancel();
-
-      // Run the io_context again until the operation completes.
-      m_io_context.run();
-    }
-  }
-
-  static void handle_receive(const boost::system::error_code& error,
-      std::size_t length,
-      boost::system::error_code* out_error,
-      std::size_t* out_length)
-  {
-    *out_error = error;
-    *out_length = length;
-  }
-
-  boost::asio::io_context m_io_context {};
-  udp::socket m_socket;
-  std::array<uint8_t, 1024> m_buffer {};
-};
-
-struct SampaCommand {
+struct Request {
   int port {};
   std::vector<uint8_t> payload {};
-  std::string info {};
 
-  void set_value(uint32_t val)
+  static constexpr uint32_t request_id = 0x80000000;
+
+  enum SubAddress : uint32_t {
+    Zero = 0x00000000,
+    Full = 0xffffffff
+  };
+
+  enum Type : uint32_t {
+    WritePairs = 0xaaaaffff,
+    WriteBurst = 0xaabbffff,
+    ReadBurst = 0xbbbbffff,
+    ReadList = 0xbbaaffff
+  };
+
+  Request(int _port, SubAddress subaddress, Type type, uint32_t cmd_info, const std::vector<uint32_t>& data = {})
+      : port(_port)
   {
-    boost::endian::native_to_big_inplace(val);
-    std::memcpy(&payload[20], &val, sizeof(val));
+    push_back(request_id);
+    push_back(static_cast<uint32_t>(subaddress));
+    push_back(static_cast<uint32_t>(type));
+    push_back(cmd_info);
+    for (auto x : data) {
+      push_back(x);
+    }
   }
 
-  void set_register(uint32_t reg)
+  void push_back(uint32_t x)
   {
-    boost::endian::native_to_big_inplace(reg);
-    std::memcpy(&payload[16], &reg, sizeof(reg));
+    const auto previous_size = payload.size();
+    payload.resize(previous_size + sizeof(x));
+    boost::endian::native_to_big_inplace(x);
+    std::memcpy(&payload[previous_size], &x, sizeof(x));
   }
 };
 
-using CommandList = std::unordered_map<std::string, SampaCommand>;
+struct Command {
+  std::string info {};
+  explicit Command(const std::string& _info)
+      : info(_info)
+  {
+  }
+
+  virtual Request make(const std::vector<uint32_t>& args) const = 0;
+
+  // Special Member functions
+  virtual ~Command() = default;
+  Command(const Command&) = delete;
+  Command& operator=(const Command& x) = delete;
+  Command(Command&& other) = delete;
+  Command& operator=(Command&& other) = delete;
+};
+
+using CommandList = std::unordered_map<std::string, std::unique_ptr<Command>>;
 inline CommandList get_commands();
 
 class SlowControl {
@@ -155,44 +87,25 @@ class SlowControl {
   {
   }
 
-  bool send_command(const std::string& command, uint32_t value = PLACEHOLDER,
-      uint32_t register_adr = PLACEHOLDER)
+  bool send_command(const std::string& command_line)
   {
-    auto idx = m_command_list.find(command);
+    std::istringstream line(command_line);
+    std::string command_word {};
+    line >> command_word;
+
+    std::vector<uint32_t> args;
+    std::copy(std::istream_iterator<uint32_t>(line), std::istream_iterator<uint32_t>(), std::back_inserter(args));
+
+    // Try to find command word
+    auto idx = m_command_list.find(command_word);
     if (idx == m_command_list.end()) {
       return false;
     }
 
-    auto cmd_data = idx->second;
-    if (value != PLACEHOLDER) {
-      cmd_data.set_value(value);
-    }
-    if (register_adr != PLACEHOLDER) {
-      cmd_data.set_register(register_adr);
-    }
-
-    // m_sender.send(fec_address, cmd_data.port, cmd_data.payload);
+    auto command = idx->second->make(args);
+    // m_sender.send(fec_address, command.port, command.payload);
     // return true;
-    return send_check(cmd_data.port, cmd_data.payload);
-  }
-
-  bool send_command_line(const std::string& command_line)
-  {
-    std::string command {};
-    uint32_t arg1 = PLACEHOLDER;
-    uint32_t arg2 = PLACEHOLDER;
-
-    std::istringstream line(command_line);
-    line >> command >> arg1 >> arg2;
-
-    uint32_t value = arg1;
-    uint32_t register_adr = arg2;
-    if (arg2 != PLACEHOLDER) {
-      register_adr = arg1;
-      value = arg2;
-    }
-
-    return send_command(command, value, register_adr);
+    return send_check(command.port, command.payload);
   }
 
   bool send_check(int port, const std::vector<uint8_t>& payload)
@@ -201,6 +114,7 @@ class SlowControl {
         std::chrono::milliseconds(receive_timeout));
 
     // Debug output
+
     // std::cout << "Sent ";
     // for (auto byte : payload) {
     //   std::cout << std::setfill('0') << std::setw(2) << std::hex
@@ -223,7 +137,7 @@ class SlowControl {
         m_response_payload.begin() + 1);
 
     const int offset = 20;
-    bool equal_value = std::equal(payload.begin() + offset, payload.end(),
+    bool equal_value = std::equal(payload.begin() + offset, payload.begin() + offset + 4,
         m_response_payload.begin() + offset);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(send_delay));
@@ -235,37 +149,105 @@ class SlowControl {
   int send_delay = 100;       // in milliseconds
 
   private:
-  static constexpr uint32_t PLACEHOLDER = 0xfacafaca;
   std::vector<uint8_t> m_response_payload {};
   PacketSender m_sender {};
   const CommandList m_command_list;
 };
 
+namespace commands {
+
+  struct FixCommand : Command {
+    Request cmd;
+    FixCommand(int port, Request::SubAddress subaddress, Request::Type type, uint32_t cmd_info, const std::vector<uint32_t>& data = {}, const std::string& info = "")
+        : Command(info)
+        , cmd(port, subaddress, type, cmd_info, data)
+    {
+    }
+
+    Request make(const std::vector<uint32_t>& /*args*/) const override { return cmd; }
+  };
+
+  struct TriggerUDP : Command {
+    TriggerUDP()
+        : Command("Constant trigger with at selected freq")
+    {
+    }
+
+    Request make(const std::vector<uint32_t>& args) const override
+    {
+      if (args.size() != 1) {
+        throw std::invalid_argument("Expects 1 argument");
+      }
+      constexpr uint64_t cycles_per_second = static_cast<uint64_t>(6000000) * 33;
+      constexpr uint64_t min_freq = std::numeric_limits<uint32_t>::max() / cycles_per_second;
+      auto freq = args[1];
+
+      if (freq < min_freq || freq > cycles_per_second) {
+        throw std::domain_error("Invalid frequency range");
+      }
+
+      auto cycles = static_cast<uint32_t>(cycles_per_second / freq);
+      return {6041, Request::SubAddress::Zero, Request::Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000010, 0x00000002, cycles}};
+    }
+  };
+
+  struct WordLength : Command {
+    WordLength()
+        : Command("Set number for aquisition words")
+    {
+    }
+
+    Request make(const std::vector<uint32_t>& args) const override
+    {
+      if (args.size() != 1) {
+        throw std::invalid_argument("Expects 1 argument");
+      }
+
+      auto low_byte = get_bit_range<uint32_t, 0, 8>(args[0]);
+      auto high_byte = get_bit_range<uint32_t, 8, 16>(args[0]);
+
+      const std::vector<uint32_t> data {
+          0xf4f00007,
+          low_byte,
+          0xf4f00008,
+          high_byte,
+          0xf4f00047,
+          low_byte,
+          0xf4f00048,
+          high_byte,
+          0xf4f00087,
+          low_byte,
+          0xf4f00088,
+          high_byte,
+          0xf4f000c7,
+          low_byte,
+          0xf4f000c8,
+          high_byte,
+      };
+
+      return {6024, Request::SubAddress::Full, Request::Type::WritePairs, 0, data};
+    }
+  };
+
+} // namespace commands
+
 inline CommandList get_commands()
 {
+  using namespace commands;
+
   CommandList commands {};
+  using Type = Request::Type;
+  using SubAddress = Request::SubAddress;
 
   // clang-format off
-
-  commands["start"]          = {6600, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x01}};
-  commands["stop"]           = {6600, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x00}};
-  commands["reset_fec"]      = {6007, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x01}};
-  commands["reset_sampas"]   = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00}};
-  commands["trigger_udp"]    = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10}};
-  commands["trigger_1hz"]    = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02}};
-  commands["trigger_2.5hz"]  = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x08, 0x00}};
-  commands["trigger_33hz"]   = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x5b, 0x8d, 0x80}};
-  commands["trigger_66hz"]   = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x2d, 0xc6, 0xc0}};
-  commands["trigger_cycles"] = {6041, {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenh_sampa1"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenh_sampa2"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0x48, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenh_sampa3"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenh_sampa4"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0xc8, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenl_sampa1"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenl_sampa2"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0x47, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenl_sampa3"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0x87, 0x00, 0x00, 0x00, 0x00}};
-  commands["twlenl_sampa4"]  = {6024, {0x80, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf4, 0xf0, 0x00, 0xc7, 0x00, 0x00, 0x00, 0x00}};
-
+  commands["start"]          = std::make_unique<FixCommand>(6600, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000001});
+  commands["stop"]           = std::make_unique<FixCommand>(6600, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000000});
+  commands["reset_fec"]      = std::make_unique<FixCommand>(6007, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0xffffffff, 0xffff0001});
+  commands["reset_sampas"]   = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0xffffffff, 0x00000400});
+  commands["trigger_1hz"]    = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000002});
+  commands["trigger_2.5khz"] = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000800});
+  commands["trigger_freq"]   = std::make_unique<TriggerUDP>();
+  commands["word_length"]    = std::make_unique<WordLength>();
   // clang-format on
 
   return commands;

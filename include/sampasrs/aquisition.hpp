@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sampasrs/utils.hpp>
+
 #include <boost/circular_buffer.hpp>
 #include <boost/core/bit.hpp>
 #include <boost/endian/conversion.hpp>
@@ -13,7 +15,6 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -29,22 +30,6 @@ namespace sampasrs {
 
 using namespace Tins;
 using payload_data = std::vector<uint8_t>;
-
-template <typename T, unsigned char start, unsigned char end>
-constexpr T get_bit_range(const T input)
-{
-  constexpr T bit_mask = (T {1} << static_cast<uint8_t>(end - start)) - 1;
-  return (input >> start) & bit_mask;
-}
-
-template <typename T>
-T read_from_buffer(const uint8_t* ptr)
-{
-  T output;
-  std::memcpy(&output, ptr, sizeof(T));
-  boost::endian::big_to_native_inplace(output);
-  return output;
-}
 
 inline uint8_t odd_parity(uint64_t word)
 {
@@ -872,7 +857,7 @@ class Aquisition {
     writer.join();
 
     // Send packet to unblock the sniffer's loop
-    PacketSender sender;
+    Tins::PacketSender sender;
     auto pkt = IP(m_address) / UDP(m_port) / RawPDU("tchau");
     sender.send(pkt);
     reader.join();
