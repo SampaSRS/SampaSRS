@@ -22,7 +22,7 @@ To build you also need to pass the location of the extracted binaries to CMake:
 ### Build
 
     mkdir build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release
+    cmake ..
     cmake --build . --config Release
 
 ## Running on Linux
