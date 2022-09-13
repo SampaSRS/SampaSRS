@@ -35,17 +35,17 @@ int main(int argc, const char* argv[])
 
   // Tree branches
   uint32_t bx_count {};
-  uint8_t channel {};
-  uint8_t sampa {};
   uint8_t fec_id {};
   long timestamp {};
-  std::vector<short> words {};
+  std::vector<uint8_t> channel {};
+  std::vector<uint8_t> sampa {};
+  std::vector<std::vector<short>> words {};
 
   tree.Branch("bx_count", &bx_count, "bx_counter/i");
-  tree.Branch("channel", &channel, "channel/b");
-  tree.Branch("sampa", &sampa, "sampa/b");
   tree.Branch("fec_id", &fec_id, "fec_id/b");
   tree.Branch("timestamp", &timestamp, "timestamp/L");
+  tree.Branch("channel", &channel);
+  tree.Branch("sampa", &sampa);
   tree.Branch("words", &words);
 
   size_t output_bytes = 0;
@@ -54,16 +54,21 @@ int main(int argc, const char* argv[])
     ++n_events;
     output_bytes += event.hits.size() * sizeof(Hit);
 
+    fec_id = event.fec_id;
+    timestamp = event.timestamp;
+    bx_count = event.bx_count;
+
     for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
       const auto header = event.get_header(waveform);
-      bx_count = header.bx_count();
-      channel = header.channel_addr();
-      sampa = header.sampa_addr();
-      fec_id = event.fec_id;
-      timestamp = event.timestamp;
-      words = event.copy_waveform(waveform);
-      tree.Fill();
+      channel.push_back(header.channel_addr());
+      sampa.push_back(header.sampa_addr());
+      words.push_back(event.copy_waveform(waveform));
     }
+
+    tree.Fill();
+    channel.clear();
+    sampa.clear();
+    words.clear();
 
     // Print events info
     // fmt::print("Bx_count {:7d} - Channels {:3d}\n", event.bx_count,
