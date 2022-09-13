@@ -13,24 +13,32 @@
 #include <string>
 #include <vector>
 
+std::string rootfname(const char* hitfname)
+{
+
+  auto path = std::filesystem::path(hitfname);
+  return path.replace_extension(".root").string();
+
+}
+
 int main(int argc, const char* argv[])
 {
   using namespace Tins;
   using namespace sampasrs;
 
-  if (argc < 3) {
-    std::cerr << "Usage: sampa_decoder <input file> <output file>\n";
+  if (argc < 2) {
+    std::cerr << "Usage: sampa_decoder <input file.raw>\n";
     return 1;
   }
-  std::string input_name = argv[1];
-  std::string output_name = argv[2];
+  const char* input_name = argv[1];
 
   // Read binary or pcap file
   auto file_extension = std::filesystem::path(input_name).extension().string();
   bool read_binary = file_extension == ".raw";
 
   size_t n_events = 0;
-  TFile out_file(output_name.c_str(), "recreate");
+	std::cout << "generating root file: "<< rootfname(input_name) << std::endl;
+  TFile out_file(rootfname(input_name).c_str(), "recreate");
   TTree tree("waveform", "Waveform");
 
   // Tree branches
