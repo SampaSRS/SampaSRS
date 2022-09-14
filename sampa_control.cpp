@@ -14,7 +14,7 @@ int main(int argc, const char* argv[])
   sampa.receive_timeout = 1000; // milli seconds
   sampa.send_delay = 10;        // milli seconds
 
-  std::string file_name = "../example_data/config.txt";
+  std::string file_name = "config.txt";
   if (argc > 1) {
     file_name = argv[1];
   }

@@ -50,7 +50,7 @@ if (ROOT_FOUND)
     add_library(sampa_root SHARED)
     target_link_libraries(sampa_root PUBLIC ROOT::Tree)
     target_include_directories(sampa_root PUBLIC include)
-    root_generate_dictionary(sampa_dicts include/sampasrs/vector.h LINKDEF include/sampasrs/LinkDef.h MODULE sampa_root)
+    root_generate_dictionary(sampa_dicts LINKDEF include/sampasrs/LinkDef.h MODULE sampa_root)
 
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
 else()

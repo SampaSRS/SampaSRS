@@ -2,6 +2,7 @@
 test_data
 example_data
 packet_sender
+config.txt
 
 # Build directories
 build*

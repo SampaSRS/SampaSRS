@@ -15,10 +15,8 @@
 
 std::string rootfname(const char* hitfname)
 {
-
   auto path = std::filesystem::path(hitfname);
   return path.replace_extension(".root").string();
-
 }
 
 int main(int argc, const char* argv[])
@@ -37,7 +35,7 @@ int main(int argc, const char* argv[])
   bool read_binary = file_extension == ".raw";
 
   size_t n_events = 0;
-	std::cout << "generating root file: "<< rootfname(input_name) << std::endl;
+  std::cout << "generating root file: " << rootfname(input_name) << "\n";
   TFile out_file(rootfname(input_name).c_str(), "recreate");
   TTree tree("waveform", "Waveform");
 

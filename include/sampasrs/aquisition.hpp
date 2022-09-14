@@ -63,6 +63,7 @@ struct Hit {
   uint8_t queue() const { return bit_range<52, 58>(); }
   // Queue index from 0 to 15
   uint8_t queue_index() const { return queue() - 1; }
+  bool full() const { return bit_range<31, 32>() != 0U; }
 
   // Header fields
   uint8_t data_parity() const { return bit_range<51, 52>(); }
@@ -87,7 +88,6 @@ struct Hit {
   }
 
   // Data fields
-  bool full() const { return bit_range<31, 32>() != 0U; }
   short word4() const { return static_cast<short>(bit_range<42, 52>()); }
   short word3() const { return static_cast<short>(bit_range<32, 42>()); }
   short word2() const { return static_cast<short>(bit_range<20, 30>()); }
@@ -323,7 +323,19 @@ struct Event {
   uint32_t bx_count = 0;
   short open_queues = 0; // Number of channels receiving data
   uint8_t fec_id = 0;
-  bool valid = true;
+  std::bitset<8> error = 0;
+
+  enum Err : unsigned char {
+    DataCorrupt,
+    HeaderCorrupt,
+    MissingHeader,
+    WrongWordCount,
+    Full,
+    MissingPayload
+  };
+
+  bool valid() const { return error.none(); }
+  void set_error(Err err) { error.set(err); }
 
   Hit get_header(size_t waveform) const
   {
@@ -451,7 +463,7 @@ class EventSorter {
     case Hit::END: {
       store_hit(queue, hit);
       if (queue.remaining_hits != 0) {
-        queue.event->valid = false;
+        queue.event->set_error(Event::Err::WrongWordCount);
       }
       close_queue(queue);
     } break;
@@ -471,7 +483,7 @@ class EventSorter {
       --queue.event->open_queues;
 
       if (queue.is_open) {
-        queue.event->valid = false;
+        queue.event->set_error(Event::Err::MissingHeader);
       }
 
       // Check if previous event is complete
@@ -503,9 +515,13 @@ class EventSorter {
 
     // Queue got more or less hits than expected
     if (queue.remaining_hits <= 0) {
-      queue.event->valid = false;
+      queue.event->set_error(Event::WrongWordCount);
       close_queue(queue);
       return;
+    }
+
+    if (hit.full()) {
+      queue.event->set_error(Event::Full);
     }
 
     // store hit in the corresponding event
@@ -529,23 +545,16 @@ class EventSorter {
   {
     // Check data parity
     if (queue.event != nullptr && (queue.data_parity != queue.expected_data_parity)) {
-      queue.event->valid = false;
+      queue.event->set_error(Event::DataCorrupt);
     }
     queue.is_open = false;
-  }
-
-  void invalidate_all_events()
-  {
-    for (auto& bx_event : m_event_pool) {
-      bx_event.second.valid = false;
-    }
   }
 
   void process(Event& event)
   {
     auto bx_count = event.bx_count;
     // Ignore initial and incomplete events
-    if ((event.valid || process_invalid_events) && m_processed_events > 3) {
+    if ((event.valid() || process_invalid_events) && m_processed_events > 3) {
       // Process event
       m_event_handler(std::move(event));
     }
