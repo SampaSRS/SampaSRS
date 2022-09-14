@@ -9,7 +9,7 @@ int main(int argc, const char* argv[])
     file_prefix = argv[1];
   }
 
-  std::string address {};
+  std::string address = "10.0.0.2";
   if (argc > 2) {
     address = argv[2];
   }

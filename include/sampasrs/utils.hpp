@@ -12,11 +12,17 @@
 
 namespace sampasrs {
 
+template <typename T>
+constexpr T bit_mask(const unsigned char size)
+{
+  return (T {1} << size) - 1;
+}
+
 template <typename T, unsigned char start, unsigned char end>
 constexpr T get_bit_range(const T input)
 {
-  constexpr T bit_mask = (T {1} << static_cast<uint8_t>(end - start)) - 1;
-  return (input >> start) & bit_mask;
+  constexpr T mask = bit_mask<T>(static_cast<unsigned char>(end - start));
+  return (input >> start) & mask;
 }
 
 template <typename T>

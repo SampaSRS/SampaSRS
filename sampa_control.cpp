@@ -12,7 +12,7 @@ int main(int argc, const char* argv[])
   sampasrs::SlowControl sampa {};
   sampa.fec_address = "10.0.0.2";
   sampa.receive_timeout = 1000; // milli seconds
-  sampa.send_delay = 300;       // milli seconds
+  sampa.send_delay = 10;        // milli seconds
 
   std::string file_name = "../example_data/config.txt";
   if (argc > 1) {
