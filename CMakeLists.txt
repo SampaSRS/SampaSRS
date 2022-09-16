@@ -67,3 +67,21 @@ add_executable(check_raw check_raw.cpp)
 
 add_executable(replay replay.cpp)
 target_link_libraries(replay PRIVATE sampasrs)
+
+install(
+    TARGETS sampa_decoder sampa_control sampa_aquisition sampa_root
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include)
+
+install(
+    FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/libsampa_root_rdict.pcm
+    ${CMAKE_CURRENT_BINARY_DIR}/libsampa_root.rootmap
+    DESTINATION lib)
+
+install(
+    FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/thissampa.sh
+    DESTINATION bin)

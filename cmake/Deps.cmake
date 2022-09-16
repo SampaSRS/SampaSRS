@@ -41,7 +41,8 @@ CPMAddPackage("https://github.com/mfontanini/libtins.git@4.4"
     VERSION 4.4
     GIT_REPOSITORY "https://github.com/mfontanini/libtins.git"
     OPTIONS
-    ${LIBTINS_OPTIONS})
+    ${LIBTINS_OPTIONS}
+    EXCLUDE_FROM_ALL TRUE)
 
 CPMAddPackage("https://github.com/fmtlib/fmt.git#9.0.0")
 

@@ -4,8 +4,9 @@ example_data
 packet_sender
 config.txt
 
-# Build directories
+# Build and install directories
 build*
+install*
 
 # clangd
 .cache
