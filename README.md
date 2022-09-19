@@ -13,13 +13,15 @@ The code has only two external dependencies
 
 ### Windows dependencies
 
-Donwload the precompiled binaries from [WinPcap](https://www.winpcap.org/install/bin/WpdPack_4_1_2.zip).
+Download the precompiled binaries from [WinPcap](https://www.winpcap.org/install/bin/WpdPack_4_1_2.zip).
 
 To build you also need to pass the location of the extracted binaries to CMake:
 
     cmake .. -DPCAP_ROOT_DIR=PathTo_libpcap_DevPack <remaining flags>
 
 ### Build
+
+We need to create a dictionary to write and access the ttree
 
     mkdir build && cd build
     cmake ..
