@@ -43,8 +43,8 @@ int main(int argc, const char* argv[])
   uint32_t bx_count {};
   uint8_t fec_id {};
   long timestamp {};
-  std::vector<uint8_t> channel {};
-  std::vector<uint8_t> sampa {};
+  std::vector<short> channel {};
+  std::vector<short> sampa {};
   std::vector<std::vector<short>> words {};
 
   tree.Branch("bx_count", &bx_count, "bx_counter/i");
@@ -66,8 +66,8 @@ int main(int argc, const char* argv[])
 
     for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
       const auto header = event.get_header(waveform);
-      channel.push_back(header.channel_addr());
-      sampa.push_back(header.sampa_addr());
+      channel.push_back((int)header.channel_addr());
+      sampa.push_back((int)header.sampa_addr());
       words.push_back(event.copy_waveform(waveform));
     }
 
