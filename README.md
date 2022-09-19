@@ -23,7 +23,9 @@ To build you also need to pass the location of the extracted binaries to CMake:
 
     mkdir build && cd build
     cmake ..
-    cmake --build . --config Release
+    cmake .. -CMAKE_INSTALL_PREFIX=../install . --config Release
+    make 
+    make install
 
 ## Running on Linux
 
