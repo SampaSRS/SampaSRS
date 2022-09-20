@@ -9,7 +9,7 @@ int main(int argc, const char* argv[])
     file_prefix = argv[1];
   }
 
-  std::string address = "10.0.0.2";
+  std::string address = "10.0.0.2"; // FEC address, used to find which network interface to sniff
   if (argc > 2) {
     address = argv[2];
   }

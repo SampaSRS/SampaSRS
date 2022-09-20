@@ -24,10 +24,8 @@ To build you also need to pass the location of the extracted binaries to CMake:
 We need to create a dictionary to write and access the ttree
 
     mkdir build && cd build
-    cmake ..
-    cmake .. -CMAKE_INSTALL_PREFIX=../install . --config Release
-    make 
-    make install
+    cmake .. -DCMAKE_INSTALL_PREFIX=../install .
+    cmake --build . --target install
 
 ## Running on Linux
 

@@ -13,12 +13,6 @@
 #include <string>
 #include <vector>
 
-std::string rootfname(const char* hitfname)
-{
-  auto path = std::filesystem::path(hitfname);
-  return path.replace_extension(".root").string();
-}
-
 int main(int argc, const char* argv[])
 {
   using namespace Tins;
@@ -30,13 +24,13 @@ int main(int argc, const char* argv[])
   }
   const char* input_name = argv[1];
 
-  // Read binary or pcap file
-  auto file_extension = std::filesystem::path(input_name).extension().string();
-  bool read_binary = file_extension == ".raw";
+  auto input_path = std::filesystem::path(input_name);
+  bool read_raw = input_path.extension().string() == ".raw";
+  auto rootfname = input_path.replace_extension(".root").string();
 
   size_t n_events = 0;
-  std::cout << "generating root file: " << rootfname(input_name) << "\n";
-  TFile out_file(rootfname(input_name).c_str(), "recreate");
+  std::cout << "generating root file: " << rootfname << "\n";
+  TFile out_file(rootfname.c_str(), "recreate");
   TTree tree("waveform", "Waveform");
 
   // Tree branches
@@ -94,14 +88,13 @@ int main(int argc, const char* argv[])
   size_t input_bytes = 0;
   auto start = std::chrono::high_resolution_clock::now();
 
-  if (read_binary) {
+  if (read_raw) {
     std::cout << "Reading raw file\n";
     std::ifstream input_file(input_name, std::ios::binary);
     if (!input_file) {
       std::cerr << "Unable to open file\n";
       return 1;
     }
-    payload_data data(Payload::size, 0);
 
     while (!input_file.eof()) {
       input_bytes += Payload::size;
@@ -125,10 +118,12 @@ int main(int argc, const char* argv[])
 
   auto duration = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
 
+  const auto ibytes = static_cast<float>(input_bytes);
+  const auto obytes = static_cast<float>(output_bytes);
   std::cout << "Duration " << duration << " ms\n";
-  std::cout << ((float)input_bytes / 1024.f / 1024.f) / duration * 1000 << " MB/s\n";
-  std::cout << "Input size  " << (float)input_bytes / 1024.f / 1024.f << " MB\n";
-  std::cout << "Output size " << (float)output_bytes / 1024.f / 1024.f << " MB\n";
+  std::cout << (ibytes / 1024.f / 1024.f) / duration * 1000 << " MB/s\n";
+  std::cout << "Input size  " << ibytes / 1024.f / 1024.f << " MB\n";
+  std::cout << "Output size " << obytes / 1024.f / 1024.f << " MB\n";
   std::cout << "Valid events " << n_events << "\n";
   std::cout << "Total events " << sorter.get_processed_events() << "\n";
 };

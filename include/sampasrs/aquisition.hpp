@@ -329,8 +329,8 @@ struct Event {
     DataCorrupt,
     HeaderCorrupt,
     MissingHeader,
-    WrongWordCount,
-    Full,
+    MissingData,
+    FullQueue,
     MissingPayload
   };
 
@@ -350,7 +350,7 @@ struct Event {
   }
 
   short get_word(size_t waveform, size_t word) const
-  { // NOLINT
+  {
     size_t hit_idx = waveform_begin[waveform] + 1 + word / Hit::words_per_hit;
     uint8_t word_idx = word % Hit::words_per_hit;
     return hits[hit_idx].word(word_idx);
@@ -463,7 +463,7 @@ class EventSorter {
     case Hit::END: {
       store_hit(queue, hit);
       if (queue.remaining_hits != 0) {
-        queue.event->set_error(Event::Err::WrongWordCount);
+        queue.event->set_error(Event::Err::MissingData);
       }
       close_queue(queue);
     } break;
@@ -515,13 +515,13 @@ class EventSorter {
 
     // Queue got more or less hits than expected
     if (queue.remaining_hits <= 0) {
-      queue.event->set_error(Event::WrongWordCount);
+      queue.event->set_error(Event::MissingData);
       close_queue(queue);
       return;
     }
 
     if (hit.full()) {
-      queue.event->set_error(Event::Full);
+      queue.event->set_error(Event::FullQueue);
     }
 
     // store hit in the corresponding event
