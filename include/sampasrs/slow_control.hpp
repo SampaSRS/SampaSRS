@@ -22,6 +22,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace sampasrs {
@@ -184,12 +185,86 @@ class SlowControl {
 };
 
 namespace commands {
+  enum SampaRegister : unsigned char {
+    HWADD = 0x00,
+    TRCNTL = 0x01,
+    TRCNTH = 0x02,
+    BXCNTLL = 0x03,
+    BXCNTLH = 0x04,
+    BXCNTHL = 0x05,
+    PRETRG = 0x06,
+    TWLENL = 0x07,
+    TWLENH = 0x08,
+    ACQSTARTL = 0x09,
+    ACQSTARTH = 0x0A,
+    ACQENDL = 0x0B,
+    ACQENDH = 0x0C,
+    VACFG = 0x0D,
+    CMD = 0x0E,
+    NBCFG = 0x0F,
+    ADCDEL = 0x10,
+    ADCTRIM = 0x11,
+    SOCFG = 0x12,
+    SODRVST = 0x13,
+    ERRORS = 0x14,
+    PMADDL = 0x15,
+    PMADDH = 0x16,
+    CHRGADD = 0x17,
+    CHRGWDATL = 0x18,
+    CHRGWDATH = 0x19,
+    CHRGCTL = 0x1A,
+    CHRGRDATL = 0x1B,
+    CHRGRDATH = 0x1C,
+    CHORDAT = 0x1D,
+    CHORDCTL = 0x1E,
+    BYPASS = 0x1F,
+    SERCHSEL = 0x20,
+    RINGCNT = 0x21,
+    CLKCONF = 0x22,
+    BOUNDARY = 0x23,
+    CHEN0 = 0x24,
+    CHEN1 = 0x25,
+    CHEN2 = 0x26,
+    CHEN3 = 0x27
+  };
 
-  uint32_t sampa_reg(unsigned char sampa_id, unsigned char reg)
+  enum ChannelRegister : unsigned char {
+    K1 = 0x00,
+    K2 = 0x01,
+    K3 = 0x02,
+    K4 = 0x03,
+    L1 = 0x04,
+    L2 = 0x05,
+    L3 = 0x06,
+    L4 = 0x07,
+    L30 = 0x08,
+    ZSTHR = 0x09,
+    ZSOFF = 0x0A,
+    ZSCFG = 0x0B,
+    FPD = 0x0C,
+    VPD = 0x0D,
+    BC2BSL = 0x0E,
+    BC3BSL = 0x0F,
+    PMDATA = 0x10,
+    BC2LTHRREL = 0x11,
+    BC2HTHRREL = 0x12,
+    BC2LTHRBSL = 0x13,
+    BC2HTHRBSL = 0x14,
+    BC2CFG = 0x15,
+    BC2RSTVAL = 0x16,
+    BC2RSTCNT = 0x17,
+    DPCFG = 0x18,
+    BC1THRL = 0x19,
+    BC1THRH = 0x1A,
+    BC1CFG = 0x1B,
+    BC1RSTCNT = 0x1C,
+    BC3SLD = 0x1D,
+    BC3SLU = 0x1E
+  };
+
+  std::pair<uint32_t, uint32_t> low_high_bytes(uint32_t x)
   {
-    constexpr unsigned char reg_size = 6;
-    constexpr unsigned char sampa_id_size = 2;
-    return 0xf4f00000 + ((bit_mask<uint32_t>(sampa_id_size) & sampa_id) << 6u) + (bit_mask<uint32_t>(reg_size) & reg);
+    return {get_bit_range<uint32_t, 0, 8>(x), get_bit_range<uint32_t, 8, 16>(x)};
   }
 
   struct FixCommand : Command {
@@ -227,6 +302,129 @@ namespace commands {
     }
   };
 
+  inline uint32_t sampa_reg(unsigned char sampa, unsigned char reg)
+  {
+    return 0xf4f00000 + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg);
+  }
+
+  static constexpr int sampa_port = 6024;
+  static constexpr unsigned char sampa_count = 4;
+
+  inline Request sampa_request(Request::Type type, uint32_t cmd_info, const std::vector<uint32_t>& data)
+  {
+    return {sampa_port, Request::SubAddress::Full, type, cmd_info, data};
+  }
+
+  // sampa = -1 : broadcast to all sampas
+  inline Requests sampa_write_burst(char sampa, unsigned char reg, const std::vector<uint32_t>& data)
+  {
+    if (sampa > 0) {
+      return {sampa_request(Request::Type::WriteBurst, sampa_reg(sampa, reg), data)};
+    }
+    // broadcast to all sampas
+    Requests requests;
+    for (unsigned char i = 0; i < sampa_count; ++i) {
+      requests.push_back(sampa_request(Request::Type::WriteBurst, sampa_reg(i, reg), data));
+    }
+    return requests;
+  }
+
+  // sampa = -1 : broadcast to all sampas
+  inline Request sampa_write_pairs(char sampa, const std::vector<std::pair<unsigned char, uint32_t>>& reg_val)
+  {
+    std::vector<uint32_t> data;
+    for (auto [reg, val] : reg_val) {
+      if (sampa > 0) {
+        data.push_back(sampa_reg(sampa, reg));
+        data.push_back(val);
+      } else {
+        for (unsigned char i = 0; i < sampa_count; ++i) {
+          data.push_back(sampa_reg(i, reg));
+          data.push_back(val);
+        }
+      }
+    }
+    return sampa_request(Request::Type::WritePairs, 0, data);
+  }
+
+  // sampa = -1 : broadcast to all sampas
+  // channel = -1 : broadcast to all channels
+  // reg = -1 to skip channel register assignment, use the previous one
+  inline Requests channel_write(char sampa, char channel, char reg, uint32_t value, bool increment_pedestal_addr = false)
+  {
+    auto [low_byte, high_byte] = low_high_bytes(value);
+
+    uint32_t channel_control = 1U << 6U; // Enable write
+    if (channel > 0) {
+      channel_control |= get_bit_range<uint32_t, 0, 5>(channel); // set channel number
+    } else {
+      channel_control |= 1U << 5U; // broadcast to all channels
+    }
+
+    if (increment_pedestal_addr) {
+      channel_control |= 1U << 7U;
+    }
+
+    if (reg > 0) {
+      return sampa_write_burst(sampa, SampaRegister::CHRGADD, {static_cast<uint32_t>(reg), low_byte, high_byte, channel_control});
+    }
+    return sampa_write_burst(sampa, SampaRegister::CHRGWDATL, {low_byte, high_byte, channel_control});
+  }
+
+  struct SampaBroadcastPairs : Command {
+    std::optional<uint32_t> has_reg {};
+
+    explicit SampaBroadcastPairs(std::optional<uint32_t> reg = {}, const std::string& info = {})
+        : Command(info)
+        , has_reg {reg}
+    {
+    }
+
+    Requests make(const std::vector<uint32_t>& args) const override
+    {
+      size_t expected_args = has_reg ? 1 : 2;
+
+      if (args.size() != expected_args) {
+        throw std::invalid_argument(fmt::format("Expects {} arguments", expected_args));
+      }
+
+      uint32_t reg = has_reg.value_or(args[0]);
+      uint32_t val = has_reg ? args[0] : args[1];
+
+      std::vector<std::pair<unsigned char, uint32_t>> data {};
+      for (unsigned char i = 0; i < sampa_count; ++i) {
+        data.emplace_back(reg, val);
+      }
+
+      return {sampa_write_pairs(-1, data)};
+    }
+  };
+
+  struct SampaBroadcastBurst : Command {
+    std::optional<uint32_t> has_reg {};
+
+    explicit SampaBroadcastBurst(std::optional<uint32_t> reg = {}, const std::string& info = {})
+        : Command(info)
+        , has_reg {reg}
+    {
+    }
+
+    Requests make(const std::vector<uint32_t>& args) const override
+    {
+      size_t min_args = has_reg ? 1 : 2;
+
+      if (args.size() != min_args) {
+        throw std::invalid_argument(fmt::format("Expects at least {} arguments", min_args));
+      }
+
+      unsigned char reg = has_reg ? has_reg.value() : args[0];
+      std::vector<uint32_t> data;
+      std::copy(args.begin() + (has_reg ? 0 : 1), args.end(), std::back_inserter(data));
+
+      return sampa_write_burst(-1, reg, data);
+    }
+  };
+
   struct WordLength : Command {
     WordLength()
         : Command("Set number for aquisition words")
@@ -239,20 +437,9 @@ namespace commands {
         throw std::invalid_argument("Expects 1 argument");
       }
 
-      auto low_byte = get_bit_range<uint32_t, 0, 8>(args[0]);
-      auto high_byte = get_bit_range<uint32_t, 8, 16>(args[0]);
+      auto [low_byte, high_byte] = low_high_bytes(args[0]);
 
-      const std::vector<uint32_t> data {
-          0xf4f00007, low_byte,
-          0xf4f00008, high_byte,
-          0xf4f00047, low_byte,
-          0xf4f00048, high_byte,
-          0xf4f00087, low_byte,
-          0xf4f00088, high_byte,
-          0xf4f000c7, low_byte,
-          0xf4f000c8, high_byte};
-
-      return {{6024, Request::SubAddress::Full, Request::Type::WritePairs, 0, data}};
+      return {sampa_write_burst(-1, SampaRegister::TWLENL, {low_byte, high_byte})};
     }
   };
 
@@ -270,47 +457,36 @@ namespace commands {
 
       // Zero suppression uses 2 bit resolution
       auto val = args[0] << 2u;
-      auto low_byte = get_bit_range<uint32_t, 0, 8>(val);
-      auto high_byte = get_bit_range<uint32_t, 8, 16>(val);
 
-      const std::vector<uint32_t> data {0x09, low_byte, high_byte, 0x60};
-
-      Requests out {};
-      for (unsigned char sampa = 0; sampa < 4; ++sampa) {
-        out.emplace_back(6024, Request::SubAddress::Full, Request::Type::WriteBurst, sampa_reg(sampa, 0x17), data);
-      }
-      return out;
+      return {channel_write(-1, -1, ChannelRegister::ZSTHR, val)};
     }
   };
 
-  struct SampaBroadcast : Command {
-    std::optional<uint32_t> has_reg {};
-
-    explicit SampaBroadcast(std::optional<uint32_t> reg = {}, const std::string& info = {})
-        : Command(info)
-        , has_reg {reg}
+  struct PedestalCliff : Command {
+    explicit PedestalCliff()
+        : Command("Fiz a fake waveform with increasing value starting from zero")
     {
     }
 
     Requests make(const std::vector<uint32_t>& args) const override
     {
-      size_t expected_args = has_reg ? 1 : 2;
-
-      if (args.size() != expected_args) {
-        throw std::invalid_argument(fmt::format("Expects {expected_args} arguments"));
+      if (!args.empty()) {
+        throw std::invalid_argument("Expects no argument");
       }
 
-      uint32_t reg = has_reg.value_or(args[0]);
-      uint32_t val = has_reg ? args[0] : args[1];
+      Requests requests;
+      const auto enable_write = sampa_write_burst(-1, SampaRegister::PMADDL, {0, 0, ChannelRegister::PMDATA});
+      std::copy(enable_write.begin(), enable_write.end(), std::back_inserter(requests));
 
-      const unsigned char sampa_count = 4;
-      std::vector<uint32_t> data {};
-      for (unsigned char i = 0; i < sampa_count; ++i) {
-        data.push_back(sampa_reg(i, reg));
-        data.push_back(val);
+      for (uint32_t x = 0; x < 1024; ++x) {
+        const auto pedestal_value = channel_write(-1, -1, -1, x, true);
+        std::copy(pedestal_value.begin(), pedestal_value.end(), std::back_inserter(requests));
       }
 
-      return {{6024, Request::SubAddress::Full, Request::Type::WritePairs, 0, data}};
+      const auto pedestal_mode = channel_write(-1, -1, ChannelRegister::DPCFG, 0x0a);
+      std::copy(pedestal_mode.begin(), pedestal_mode.end(), std::back_inserter(requests));
+
+      return requests;
     }
   };
 
@@ -336,9 +512,10 @@ get_commands()
   commands["trigger_freq"]     = std::make_unique<TriggerUDP>();
   commands["word_length"]      = std::make_unique<WordLength>();
   commands["zero_suppression"] = std::make_unique<ZeroSuppression>();
-  commands["set_all_sampas"]   = std::make_unique<SampaBroadcast>();
-  commands["pretrigger"]       = std::make_unique<SampaBroadcast>(0x06u, "Number of pre-samples (Pre-trigger delay), max 192");
-  commands["sampa_config"]     = std::make_unique<SampaBroadcast>(0x0du, "Various configuration settings");
+  commands["set_all_sampas"]   = std::make_unique<SampaBroadcastPairs>();
+  commands["pretrigger"]       = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
+  commands["sampa_config"]     = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
+  commands["pedestal_cliff"]   = std::make_unique<PedestalCliff>();
   // clang-format on
 
   return commands;
