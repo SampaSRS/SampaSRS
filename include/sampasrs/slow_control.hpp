@@ -427,7 +427,7 @@ namespace commands {
 
   struct WordLength : Command {
     WordLength()
-        : Command("Set number for aquisition words")
+        : Command("Set number for acquisition words")
     {
     }
 

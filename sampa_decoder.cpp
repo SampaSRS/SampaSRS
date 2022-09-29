@@ -1,9 +1,11 @@
 #include <sampasrs/root_fix.hpp>
 
+#include <sampasrs/acquisition.hpp>
+#include <sampasrs/decoder.hpp>
+#include <sampasrs/mapping.hpp>
+
 #include <TFile.h>
 #include <TTree.h>
-#include <sampasrs/aquisition.hpp>
-#include <sampasrs/mapping.hpp>
 #include <tins/tins.h>
 
 #include <chrono>
@@ -12,8 +14,8 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 int main(int argc, const char* argv[])
 {
@@ -35,10 +37,10 @@ int main(int argc, const char* argv[])
   TFile out_file(rootfname.c_str(), "recreate");
   TTree tree("waveform", "Waveform");
 
-  //mapping pair creation
+  // mapping pair creation
   std::unordered_map<int, std::pair<double, double>> map_of_strips = {};
 
-  Mapping_strips(map_of_strips); //change the mapping on mapping.hpp for a diferent detector
+  Mapping_strips(map_of_strips); // change the mapping on mapping.hpp for a diferent detector
 
   // Tree branches
   uint32_t bx_count {};
@@ -50,7 +52,6 @@ int main(int argc, const char* argv[])
   std::vector<double> x {};
   std::vector<double> y {};
   std::vector<std::vector<short>> words {};
-
 
   tree.Branch("bx_count", &bx_count, "bx_counter/i");
   tree.Branch("fec_id", &fec_id, "fec_id/b");
@@ -76,8 +77,8 @@ int main(int argc, const char* argv[])
       const auto header = event.get_header(waveform);
       channel.push_back((int)header.channel_addr());
       sampa.push_back((int)header.sampa_addr());
-      x.push_back(map_of_strips[32*((int)header.sampa_addr()-8)+(int)header.channel_addr()].first); //only works using sampa from 8 to 11
-      y.push_back(map_of_strips[32*((int)header.sampa_addr()-8)+(int)header.channel_addr()].second); //only works using sampa from 8 to 11
+      x.push_back(map_of_strips[32 * ((int)header.sampa_addr() - 8) + (int)header.channel_addr()].first);  // only works using sampa from 8 to 11
+      y.push_back(map_of_strips[32 * ((int)header.sampa_addr() - 8) + (int)header.channel_addr()].second); // only works using sampa from 8 to 11
       words.push_back(event.copy_waveform(waveform));
     }
 
@@ -115,8 +116,8 @@ int main(int argc, const char* argv[])
     }
 
     while (!input_file.eof()) {
-      input_bytes += Payload::size;
       auto payload = Payload::read(input_file);
+      input_bytes += payload.byte_size();
       sorter.process(payload);
     }
   } else {
@@ -125,7 +126,7 @@ int main(int argc, const char* argv[])
 
     auto sniffer_callback = [&](Packet& packet) {
       Payload payload(std::move(packet));
-      input_bytes += Payload::size;
+      input_bytes += payload.byte_size();
       sorter.process(payload);
       return true;
     };
