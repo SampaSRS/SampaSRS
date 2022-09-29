@@ -2,17 +2,16 @@
 
 #include <sampasrs/utils.hpp>
 
-#include <boost/circular_buffer.hpp>
 #include <boost/core/bit.hpp>
 #include <boost/endian/conversion.hpp>
 #include <fmt/core.h>
-#include <tins/tins.h>
+#include <tins/packet.h>
+#include <tins/rawpdu.h>
 
 #include <algorithm>
 #include <array>
 #include <bitset>
 #include <chrono>
-#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -20,9 +19,10 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
-#include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -238,6 +238,34 @@ struct Hit {
   uint64_t data;
 };
 
+template <typename T>
+void deserialize(std::ifstream& file, T& out)
+{
+  file.read(reinterpret_cast<char*>(&out), sizeof(out));
+}
+
+template <typename T>
+void deserialize(std::ifstream& file, std::vector<T>& out)
+{
+  unsigned int size {};
+  deserialize(file, size);
+  out.resize(size);
+  file.read(reinterpret_cast<char*>(out.data()), out.size() * sizeof(T));
+}
+
+template <typename T>
+void serialize(std::ofstream& file, T input)
+{
+  file.write(reinterpret_cast<const char*>(&input), sizeof(input));
+}
+
+template <typename T>
+void serialize(std::ofstream& file, const std::vector<T>& input)
+{
+  serialize(file, static_cast<unsigned int>(input.size()));
+  file.write(reinterpret_cast<const char*>(input.data()), input.size() * sizeof(T));
+}
+
 struct Payload {
   Payload() = default;
 
@@ -256,19 +284,15 @@ struct Payload {
   static Payload read(std::ifstream& file)
   {
     Payload payload {};
-    payload.data.resize(Payload::size);
-    file.read(reinterpret_cast<char*>(&payload.timestamp),
-        sizeof(payload.timestamp));
-    file.read(reinterpret_cast<char*>(payload.data.data()),
-        static_cast<long>(payload.data.size()));
+    deserialize(file, payload.timestamp);
+    deserialize(file, payload.data);
     return payload;
   }
 
   void write(std::ofstream& file) const
   {
-    file.write(reinterpret_cast<const char*>(&timestamp), sizeof(timestamp));
-    file.write(reinterpret_cast<const char*>(data.data()),
-        static_cast<long>(data.size()));
+    serialize(file, timestamp);
+    serialize(file, data);
   }
 
   uint32_t frame_counter() const
@@ -305,15 +329,14 @@ struct Payload {
     return Hit(&data[index]);
   }
 
+  size_t byte_size() const { return data.size() - hit_offset; }
+
   static constexpr size_t header_size = 16;
-  static constexpr size_t size = 1032;
 
   long timestamp = 0;
   payload_data data;
   size_t header_offset = 0;
   size_t hit_offset = header_size;
-
-  private:
 };
 
 struct Event {
@@ -321,9 +344,9 @@ struct Event {
   std::vector<size_t> waveform_begin {};
   long timestamp = 0;
   uint32_t bx_count = 0;
-  short open_queues = 0; // Number of channels receiving data
   uint8_t fec_id = 0;
   std::bitset<8> error = 0;
+  short open_queues = 0; // Number of channels receiving data
 
   enum Err : unsigned char {
     DataCorrupt,
@@ -374,11 +397,38 @@ struct Event {
     hits.resize(hits.size() + n_hits, Hit {uint64_t(0)});
     return waveform_begin.back();
   }
+
+  static Event read(std::ifstream& file)
+  {
+    Event event {};
+    deserialize(file, event.hits);
+    deserialize(file, event.waveform_begin);
+    deserialize(file, event.timestamp);
+    deserialize(file, event.bx_count);
+    deserialize(file, event.fec_id);
+    deserialize(file, event.error);
+    return event;
+  }
+
+  void write(std::ofstream& file) const
+  {
+    serialize(file, hits);
+    serialize(file, waveform_begin);
+    serialize(file, timestamp);
+    serialize(file, bx_count);
+    serialize(file, fec_id);
+    serialize(file, error);
+  }
+
+  size_t byte_size() const
+  {
+    return hits.size() * sizeof(Hit);
+  }
 };
 
 class EventSorter {
   public:
-  explicit EventSorter(const std::function<void(Event)>& event_handler)
+  explicit EventSorter(const std::function<void(Event&&)>& event_handler)
       : m_event_handler(event_handler)
   {
   }
@@ -588,7 +638,7 @@ class EventSorter {
 
     static constexpr unsigned int min_hits = 6;
 
-    auto remaining_bytes = Payload::size - header_offset;
+    auto remaining_bytes = data.size() - header_offset;
     if (remaining_bytes < sizeof(Hit) * (min_hits + 1) + Payload::header_size) {
       return;
     }
@@ -663,226 +713,6 @@ class EventSorter {
   unsigned char m_alignment = 0;
   std::array<uint8_t, sizeof(Hit)> m_leftover {};
   std::function<void(Event&&)> m_event_handler;
-};
-
-template <typename Buffer>
-void write_to_file(const Buffer& buffer, std::ofstream& file)
-{
-  for (const auto& payload : buffer) {
-    payload.write(file);
-  }
-}
-
-// Network sniffer and raw data store
-class Aquisition {
-  using sc = std::chrono::steady_clock;
-  using fast_clock = std::chrono::high_resolution_clock;
-  using Buffer = boost::circular_buffer<Payload>;
-
-  public:
-  struct ReadStats {
-    size_t bytes = 0;
-    size_t packets = 0;
-  };
-
-  struct WriteStats {
-    size_t bytes = 0;
-    double waiting_seconds = 0;
-    double writing_seconds = 0;
-  };
-
-  Aquisition(const std::string& file_prefix, const std::string& address, int port = 6006, size_t buffer_size = 2000000)
-      : m_file_prefix(file_prefix)
-      , m_address(address)
-      , m_port(port)
-      , m_network_buffer(std::max(buffer_size, size_t(100000)))
-  {
-  }
-
-  void reader_task()
-  {
-    // Find interface do listen
-    NetworkInterface iface;
-    if (m_address.empty()) {
-      iface = NetworkInterface::default_interface().name();
-    } else {
-      IPv4Address to_resolve(m_address);
-      iface = NetworkInterface(to_resolve).name();
-    }
-    std::wcout << "Listening to interface: " << iface.friendly_name() << "\n";
-
-    // Sniff on interface
-    SnifferConfiguration config;
-    auto filter = fmt::format("udp port {}", m_port);
-    config.set_filter(filter);
-    Sniffer sniffer(iface.name(), config);
-    sniffer.set_timeout(10);
-
-    while (m_is_running) {
-      Packet packet = sniffer.next_packet();
-      if (!packet) {
-        // Error reading packet
-        continue;
-      }
-      m_read_stats.bytes += packet.pdu()->size();
-
-      Payload payload(std::move(packet));
-      ++m_read_stats.packets;
-
-      // TODO: allow variable size packets (is this needed?)
-      if (payload.data.size() == Payload::size) {
-        {
-          std::lock_guard<std::mutex> lock(m_buffer_access);
-          m_network_buffer.push_back(std::move(payload));
-        }
-        m_buffer_ready.notify_all();
-      }
-    }
-  }
-
-  std::string next_file_name()
-  {
-    auto file_name = fmt::format("{}-{:04d}.raw", m_file_prefix, m_file_count);
-    ++m_file_count;
-    return file_name;
-  }
-
-  void writer_task()
-  {
-    // min/max packets to write to file at once
-    const size_t min_packets = 50;
-    const size_t max_packets = 10000;
-    const size_t file_packets_limit = size_t(2) << 20U; // ~2 GB
-    auto packets_saved = std::numeric_limits<unsigned int>::max();
-
-    std::vector<Payload> file_buffer;
-    file_buffer.reserve(max_packets);
-    std::ofstream file;
-
-    while (m_is_running) {
-      // Create a new file if the previous one exceeded the max size
-      if (packets_saved > file_packets_limit) {
-        if (file.is_open()) {
-          file.close();
-        }
-        packets_saved = 0;
-
-        auto file_name = next_file_name();
-        fmt::print("Writing to {}\n", file_name);
-        file.open(file_name, std::ios::binary);
-        if (!file) {
-          throw std::runtime_error("Unable to create output file.");
-        }
-      }
-
-      // Synchronized section, this code section will block the reader task
-      {
-        std::unique_lock<std::mutex> lock(m_buffer_access);
-        // Wait until the buffer to have enough elements, then acquire the lock
-        auto waiting_timer = fast_clock::now();
-        m_buffer_ready.wait_for(lock, std::chrono::seconds(1), [&] {
-          return m_network_buffer.size() >= min_packets;
-        });
-        m_write_stats.waiting_seconds += std::chrono::duration<double>(fast_clock::now() - waiting_timer)
-                                             .count();
-
-        if (m_network_buffer.empty()) {
-          continue;
-        }
-
-        // Get payloads to write
-        const size_t payload_count = std::min(m_network_buffer.size(), file_buffer.capacity());
-        for (int i = 0; i < payload_count; ++i) {
-          m_write_stats.bytes += m_network_buffer.front().data.size();
-          file_buffer.emplace_back(std::move(m_network_buffer.front()));
-          m_network_buffer.pop_front();
-        }
-        packets_saved += payload_count;
-      }
-
-      // Write to file
-      auto writing_timer = fast_clock::now();
-      write_to_file(file_buffer, file);
-      m_write_stats.writing_seconds += std::chrono::duration<double>(fast_clock::now() - writing_timer)
-                                           .count();
-
-      file_buffer.clear();
-    }
-
-    fmt::print("Writing buffer to file...\n");
-    // Write remaining payloads in the buffer
-    write_to_file(m_network_buffer, file);
-    fmt::print("Done\n");
-  }
-
-  void logger_task()
-  {
-    ReadStats last_read_stats {};
-    WriteStats last_write_stats {};
-    auto last_time = sc::now();
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    while (m_is_running) {
-      auto now = sc::now();
-      auto read_stats = m_read_stats;
-      auto write_stats = m_write_stats;
-      auto dt = std::chrono::duration<double>(now - last_time).count();
-
-      auto received_mb = static_cast<double>(read_stats.bytes - last_read_stats.bytes) / 1024. / 1024.;
-      auto read_rate = received_mb / dt;
-
-      auto buffer_usage = static_cast<double>(m_network_buffer.size()) / static_cast<double>(m_network_buffer.capacity());
-
-      auto writing_time = write_stats.writing_seconds - last_write_stats.writing_seconds;
-      auto waiting_time = write_stats.waiting_seconds - last_write_stats.waiting_seconds;
-      auto write_load = writing_time / (waiting_time + writing_time + 1e-10) * 100.;
-
-      fmt::print("{} - {:5.1f} MB/s - buffer usage {:5.1f} % - Write load {:5.1f} %\n",
-          read_stats.packets, read_rate, buffer_usage, write_load);
-
-      last_read_stats = read_stats;
-      last_write_stats = write_stats;
-      last_time = now;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-  }
-
-  void run()
-  {
-    std::thread writer(&Aquisition::writer_task, this);
-    std::thread reader(&Aquisition::reader_task, this);
-    std::thread logger(&Aquisition::logger_task, this);
-
-    for (;;) {
-      const auto key = std::cin.get();
-      if (key == 'x') {
-        m_is_running = false;
-        fmt::print("Exiting\n");
-        break;
-      }
-    }
-
-    logger.join();
-    writer.join();
-
-    // Send packet to unblock the sniffer's loop
-    Tins::PacketSender sender;
-    auto pkt = IP(m_address) / UDP(m_port) / RawPDU("tchau");
-    sender.send(pkt);
-    reader.join();
-  }
-
-  private:
-  std::string m_file_prefix;
-  std::string m_address;
-  int m_port;
-  Buffer m_network_buffer;
-  ReadStats m_read_stats {};
-  WriteStats m_write_stats {};
-  std::mutex m_buffer_access {};
-  std::condition_variable m_buffer_ready {};
-  int m_file_count = 0;
-  bool m_is_running = true;
 };
 
 } // namespace sampasrs

@@ -29,8 +29,8 @@ We need to create a dictionary to write and access the ttree
 
 ## Running on Linux
 
-The executable `sampa_aquisition` needs special permissions to read raw network sockets. You can run it as root with `sudo` or you can give it the permission read raw sockets with:
+The executable `sampa_acquisition` needs special permissions to read raw network sockets. You can run it as root with `sudo` or you can give it the permission read raw sockets with:
 
-    sudo setcap cap_net_raw=pe sampa_aquisition
+    sudo setcap cap_net_raw=pe sampa_acquisition
 
 and run it as a normal user.

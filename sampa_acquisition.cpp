@@ -1,4 +1,4 @@
-#include <sampasrs/aquisition.hpp>
+#include <sampasrs/acquisition.hpp>
 
 #include <string>
 
@@ -14,6 +14,6 @@ int main(int argc, const char* argv[])
     address = argv[2];
   }
 
-  sampasrs::Aquisition sampa(file_prefix, address);
+  sampasrs::Acquisition sampa(file_prefix, false, address);
   sampa.run();
 }
