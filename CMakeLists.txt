@@ -46,13 +46,17 @@ if (ROOT_FOUND)
     # include("${ROOT_DIR}/modules/RootNewMacros.cmake")
     message(STATUS "ROOT found")
     add_executable(sampa_decoder sampa_decoder.cpp)
-    
+    add_executable(clustering clustering.cpp)
+
+
     add_library(sampa_root SHARED)
     target_link_libraries(sampa_root PUBLIC ROOT::Tree)
     target_include_directories(sampa_root PUBLIC include)
     root_generate_dictionary(sampa_dicts LINKDEF include/sampasrs/LinkDef.h MODULE sampa_root)
 
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
+    target_link_libraries(clustering PRIVATE sampasrs sampa_root)
+
 else()
     message(WARNING "ROOT not found, sampa_decoder won't be compiled")
 endif()
@@ -68,8 +72,9 @@ add_executable(check_raw check_raw.cpp)
 add_executable(replay replay.cpp)
 target_link_libraries(replay PRIVATE sampasrs)
 
+
 install(
-    TARGETS sampa_decoder sampa_control sampa_aquisition sampa_root
+    TARGETS sampa_decoder sampa_control sampa_aquisition sampa_root clustering
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin
