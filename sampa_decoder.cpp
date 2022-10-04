@@ -39,6 +39,9 @@ int main(int argc, const char* argv[])
   long timestamp {};
   std::vector<short> channel {};
   std::vector<short> sampa {};
+  std::vector<short> PadID {};
+  std::vector<double> x {};
+  std::vector<double> y {};
   std::vector<std::vector<short>> words {};
 
   tree.Branch("bx_count", &bx_count, "bx_counter/i");
@@ -46,6 +49,8 @@ int main(int argc, const char* argv[])
   tree.Branch("timestamp", &timestamp, "timestamp/L");
   tree.Branch("channel", &channel);
   tree.Branch("sampa", &sampa);
+  tree.Branch("x", &x);
+  tree.Branch("y", &y);
   tree.Branch("words", &words);
 
   size_t output_bytes = 0;
