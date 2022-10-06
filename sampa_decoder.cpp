@@ -23,14 +23,13 @@ int main(int argc, const char* argv[])
   using namespace sampasrs;
 
   if (argc < 2) {
-    std::cerr << "Usage: sampa_decoder <input file.raw>\n";
+    std::cerr << "Usage: sampa_decoder <input files>\n";
     return 1;
   }
   const char* input_name = argv[1];
 
   auto input_path = std::filesystem::path(input_name);
-  bool read_raw = input_path.extension().string() == ".raw";
-  auto rootfname = input_path.replace_extension(".root").string();
+  const auto rootfname = input_path.replace_extension(".root").string();
 
   size_t n_events = 0;
   std::cout << "generating root file: " << rootfname << "\n";
@@ -107,30 +106,49 @@ int main(int argc, const char* argv[])
   size_t input_bytes = 0;
   auto start = std::chrono::high_resolution_clock::now();
 
-  if (read_raw) {
-    std::cout << "Reading raw file\n";
-    std::ifstream input_file(input_name, std::ios::binary);
-    if (!input_file) {
-      std::cerr << "Unable to open file\n";
-      return 1;
-    }
+  for (int i = 1; i < argc; ++i) {
+    const auto file_name = std::filesystem::path(argv[i]);
+    const auto file_extension = file_name.extension().string();
 
-    while (!input_file.eof()) {
-      auto payload = Payload::read(input_file);
-      input_bytes += payload.byte_size();
-      sorter.process(payload);
-    }
-  } else {
-    std::cout << "Reading pcap file\n";
-    FileSniffer input_file(input_name);
+    std::cout << "Processing file: " << file_name;
+    if (file_extension == ".raw") {
+      std::cout << "Reading raw file\n";
+      std::ifstream input_file(file_name, std::ios::binary);
+      if (!input_file) {
+        std::cerr << "Unable to open file\n";
+        return 1;
+      }
 
-    auto sniffer_callback = [&](Packet& packet) {
-      Payload payload(std::move(packet));
-      input_bytes += payload.byte_size();
-      sorter.process(payload);
-      return true;
-    };
-    input_file.sniff_loop(sniffer_callback);
+      while (!input_file.eof()) {
+        auto payload = Payload::read(input_file);
+        input_bytes += payload.byte_size();
+        sorter.process(payload);
+      }
+    } else if (file_extension == ".rawevent") {
+      std::cout << "Reading raw events file\n";
+      std::ifstream input_file(file_name, std::ios::binary);
+      if (!input_file) {
+        std::cerr << "Unable to open file\n";
+        return 1;
+      }
+
+      while (!input_file.eof()) {
+        auto event = Event::read(input_file);
+        input_bytes += event.byte_size();
+        save_event(std::move(event));
+      }
+    } else {
+      std::cout << "Reading pcap file\n";
+      FileSniffer input_file(file_name);
+
+      auto sniffer_callback = [&](Packet& packet) {
+        Payload payload(std::move(packet));
+        input_bytes += payload.byte_size();
+        sorter.process(payload);
+        return true;
+      };
+      input_file.sniff_loop(sniffer_callback);
+    }
   }
 
   out_file.Write();

@@ -108,11 +108,10 @@ class Acquisition {
   using fast_clock = std::chrono::high_resolution_clock;
 
   public:
-  explicit Acquisition(const std::string& file_prefix, bool save_raw = true, const std::string& address = "10.0.0.2", int port = 6006)
+  explicit Acquisition(const std::string& file_prefix, bool save_raw = true, const std::string& fec_address = "10.0.0.2")
       : m_file_prefix(file_prefix)
-      , m_address(address)
+      , m_fec_address(fec_address)
       , m_save_raw(save_raw)
-      , m_port(port)
   {
   }
 
@@ -167,9 +166,10 @@ class Acquisition {
       }
     }
 
+    // TODO: find a proper way to break the sniffer loop
     // Send packet to unblock the sniffer's loop
     Tins::PacketSender sender;
-    auto pkt = IP(m_address) / UDP(m_port) / RawPDU("tchau");
+    auto pkt = IP("10.0.0.3", m_fec_address) / UDP(6006) / RawPDU("tchau");
     sender.send(pkt);
     reader.join();
   }
@@ -274,17 +274,17 @@ class Acquisition {
   {
     // Find interface do listen
     NetworkInterface iface;
-    if (m_address.empty()) {
+    if (m_fec_address.empty()) {
       iface = NetworkInterface::default_interface().name();
     } else {
-      IPv4Address to_resolve(m_address);
+      IPv4Address to_resolve(m_fec_address);
       iface = NetworkInterface(to_resolve).name();
     }
     std::wcout << "Listening to interface: " << iface.friendly_name() << "\n";
 
     // Sniff on interface
     SnifferConfiguration config;
-    auto filter = fmt::format("udp port {}", m_port);
+    static const char* filter = "udp port 6006 and dst host 10.0.0.3";
     config.set_filter(filter);
     Sniffer sniffer(iface.name(), config);
     sniffer.set_timeout(10);
@@ -358,9 +358,9 @@ class Acquisition {
   std::string next_file_name()
   {
     if constexpr (std::is_same<T, Payload>::value) {
-      return next_file_name("rawevent");
+      return next_file_name("raw");
     }
-    return next_file_name("raw");
+    return next_file_name("rawevent");
   }
 
   template <typename T>
@@ -593,9 +593,8 @@ class Acquisition {
   }
 
   std::string m_file_prefix;
-  std::string m_address;
+  std::string m_fec_address;
   bool m_save_raw;
-  int m_port;
 
   ReadStats m_read_stats {};
   DecodeStats m_decoder_stats {};
