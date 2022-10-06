@@ -14,6 +14,6 @@ int main(int argc, const char* argv[])
     address = argv[2];
   }
 
-  sampasrs::Acquisition sampa(file_prefix, false, address);
+  sampasrs::Acquisition sampa(file_prefix, true, address);
   sampa.run();
 }

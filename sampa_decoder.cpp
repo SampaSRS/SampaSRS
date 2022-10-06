@@ -23,16 +23,14 @@ int main(int argc, const char* argv[])
   using namespace sampasrs;
 
   if (argc < 2) {
-    std::cerr << "Usage: sampa_decoder <input file.raw>\n";
+    std::cerr << "Usage: sampa_decoder <input files>\n";
     return 1;
   }
   const char* input_name = argv[1];
 
   auto input_path = std::filesystem::path(input_name);
-  bool read_raw = input_path.extension().string() == ".raw";
-  auto rootfname = input_path.replace_extension(".root").string();
+  const auto rootfname = input_path.replace_extension(".root").string();
 
-  size_t n_events = 0;
   std::cout << "generating root file: " << rootfname << "\n";
   TFile out_file(rootfname.c_str(), "recreate");
   TTree tree("waveform", "Waveform");
@@ -63,10 +61,16 @@ int main(int argc, const char* argv[])
   tree.Branch("y", &y);
   tree.Branch("words", &words);
 
+  size_t n_events = 0;
+  size_t n_valid_events = 0;
   size_t output_bytes = 0;
-  // TODO: Replace this with a proper tree writer
+
   auto save_event = [&](Event&& event) {
     ++n_events;
+    if (!event.valid()) {
+      return;
+    }
+    ++n_valid_events;
     output_bytes += event.hits.size() * sizeof(Hit);
 
     fec_id = event.fec_id;
@@ -100,37 +104,56 @@ int main(int argc, const char* argv[])
   };
 
   EventSorter sorter(save_event);
-  sorter.process_invalid_events = false;
+  sorter.process_invalid_events = true;
   sorter.enable_remove_caca = true;
   sorter.enable_header_fix = false;
 
   size_t input_bytes = 0;
   auto start = std::chrono::high_resolution_clock::now();
 
-  if (read_raw) {
-    std::cout << "Reading raw file\n";
-    std::ifstream input_file(input_name, std::ios::binary);
-    if (!input_file) {
-      std::cerr << "Unable to open file\n";
-      return 1;
-    }
+  for (int i = 1; i < argc; ++i) {
+    const auto file_name = std::filesystem::path(argv[i]);
+    const auto file_extension = file_name.extension().string();
 
-    while (!input_file.eof()) {
-      auto payload = Payload::read(input_file);
-      input_bytes += payload.byte_size();
-      sorter.process(payload);
-    }
-  } else {
-    std::cout << "Reading pcap file\n";
-    FileSniffer input_file(input_name);
+    std::cout << "Reading file: " << file_name;
+    if (file_extension == ".raw") {
+      std::cout << " as raw file\n";
+      std::ifstream input_file(file_name, std::ios::binary);
+      if (!input_file) {
+        std::cerr << "Unable to open file\n";
+        return 1;
+      }
 
-    auto sniffer_callback = [&](Packet& packet) {
-      Payload payload(std::move(packet));
-      input_bytes += payload.byte_size();
-      sorter.process(payload);
-      return true;
-    };
-    input_file.sniff_loop(sniffer_callback);
+      while (!input_file.eof()) {
+        auto payload = Payload::read(input_file);
+        input_bytes += payload.byte_size();
+        sorter.process(payload);
+      }
+    } else if (file_extension == ".rawev") {
+      std::cout << " as raw events file\n";
+      std::ifstream input_file(file_name, std::ios::binary);
+      if (!input_file) {
+        std::cerr << "Unable to open file\n";
+        return 1;
+      }
+
+      while (!input_file.eof()) {
+        auto event = Event::read(input_file);
+        input_bytes += event.byte_size();
+        save_event(std::move(event));
+      }
+    } else {
+      std::cout << " as pcap file\n";
+      FileSniffer input_file(file_name);
+
+      auto sniffer_callback = [&](Packet& packet) {
+        Payload payload(std::move(packet));
+        input_bytes += payload.byte_size();
+        sorter.process(payload);
+        return true;
+      };
+      input_file.sniff_loop(sniffer_callback);
+    }
   }
 
   out_file.Write();
@@ -143,6 +166,6 @@ int main(int argc, const char* argv[])
   std::cout << (ibytes / 1024.f / 1024.f) / duration * 1000 << " MB/s\n";
   std::cout << "Input size  " << ibytes / 1024.f / 1024.f << " MB\n";
   std::cout << "Output size " << obytes / 1024.f / 1024.f << " MB\n";
-  std::cout << "Valid events " << n_events << "\n";
-  std::cout << "Total events " << sorter.get_processed_events() << "\n";
+  std::cout << "Valid events " << n_valid_events << "\n";
+  std::cout << "Total events " << n_events << "\n";
 };
