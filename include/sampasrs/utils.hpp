@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,46 @@ T read_from_buffer(const uint8_t* ptr)
   boost::endian::big_to_native_inplace(output);
   return output;
 }
+
+class Timer {
+  public:
+  using clock = std::chrono::steady_clock;
+
+  explicit Timer(clock::duration interval)
+      : m_last(clock::now())
+      , m_interval(interval)
+  {
+  }
+
+  explicit operator bool()
+  {
+    const auto now = clock::now();
+    if (now > (m_last + m_interval)) {
+      m_last = now;
+      return true;
+    }
+    return false;
+  }
+
+  private:
+  clock::time_point m_last;
+  clock::duration m_interval;
+};
+
+template <typename Item>
+struct Lock {
+  private:
+  std::lock_guard<std::mutex> lock;
+
+  public:
+  Item& item;
+
+  Lock(Item& _item, std::mutex& mutex)
+      : lock(mutex)
+      , item(_item)
+  {
+  }
+};
 
 // Adapted from:
 // https://www.boost.org/doc/libs/1_80_0/doc/html/boost_asio/example/cpp11/timeouts/blocking_udp_client.cpp

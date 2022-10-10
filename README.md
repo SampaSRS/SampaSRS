@@ -2,14 +2,18 @@
 
 ## How to build
 
-The code has only two external dependencies
+The code has the following build dependencies
 
-- [libpcap](https://www.tcpdump.org/index.html)
+- C++17 compiler
+- Git
+- CMake (3.14 or later)
 - [ROOT](https://root.cern/) (6.26 or later)
+- [libpcap](https://www.tcpdump.org/index.html)
+- SDL2 (for sampa_gui)
 
 ### Ubuntu dependencies
 
-    sudo apt install libpcap-dev
+    sudo apt install build-essential git cmake libpcap-dev libsdl2-dev
 
 ### Windows dependencies
 
@@ -29,8 +33,7 @@ We need to create a dictionary to write and access the ttree
 
 ## Running on Linux
 
-The executable `sampa_acquisition` needs special permissions to read raw network sockets. You can run it as root with `sudo` or you can give it the permission read raw sockets with:
+The executable `sampa_acquisition` and `sampa_gui` needs special permissions to read raw network sockets. You can run it as root with `sudo` or you can give it the permission to run as a normal user with:
 
     sudo setcap cap_net_raw=pe sampa_acquisition
-
-and run it as a normal user.
+    sudo setcap cap_net_raw=pe sampa_gui

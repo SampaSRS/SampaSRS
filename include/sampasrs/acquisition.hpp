@@ -1,20 +1,14 @@
 #pragma once
 
+#include <boost/histogram/make_histogram.hpp>
+#include <filesystem>
 #include <sampasrs/root_fix.hpp>
 
 #include <sampasrs/decoder.hpp>
 #include <sampasrs/utils.hpp>
 
-#include "RtypesCore.h"
-#include "TApplication.h"
-#include "TRootCanvas.h"
-#include "TSystem.h"
-#include "TText.h"
-#include <TCanvas.h>
-#include <TGraph.h>
-#include <TH1.h>
-#include <TH1F.h>
 #include <boost/circular_buffer.hpp>
+#include <boost/histogram.hpp> // make_histogram, regular, weight, indexed
 #include <fmt/core.h>
 #include <tins/tins.h>
 
@@ -36,6 +30,20 @@
 #include <vector>
 
 namespace sampasrs {
+
+using HistAxis = boost::histogram::axis::integer<int, boost::histogram::use_default, boost::histogram::axis::option::none_t>; // no under-overflow
+using Hist = boost::histogram::histogram<std::tuple<HistAxis>>;
+
+// Grow histogram limits if needed
+static void resize(Hist& hist, int min, int max)
+{
+  using namespace boost::histogram;
+  auto tmp = make_histogram(HistAxis(min, max));
+  for (auto&& bin : indexed(hist)) {
+    tmp(bin.bin(0).center(), weight(*bin));
+  }
+  hist = std::move(tmp);
+}
 
 // Helper class to pass data between different threads
 template <typename T>
@@ -104,77 +112,62 @@ class FIFO {
 
 // Network sniffer and raw data store
 class Acquisition {
-  using sc = std::chrono::steady_clock;
   using fast_clock = std::chrono::high_resolution_clock;
 
   public:
-  explicit Acquisition(const std::string& file_prefix, bool save_raw = true, const std::string& fec_address = "10.0.0.2")
+  explicit Acquisition(const std::string& file_prefix, bool save_raw = true, bool process_events = true, const std::string& fec_address = "10.0.0.2")
       : m_file_prefix(file_prefix)
       , m_fec_address(fec_address)
-      , m_save_raw(save_raw)
   {
+    // Check prefix to avoid deleting old files
+    const auto first_file_name = save_raw ? next_file_name<Payload>(false) : next_file_name<Event>(false);
+    if (std::filesystem::exists(first_file_name)) {
+      throw std::runtime_error(fmt::format("File \"{}\" exists", first_file_name));
+    }
+
+    // Start data aquisition and processing
+    if (save_raw) {
+      m_reader_buffer.config(2000000, 50, 10000);
+      m_tmp_payload_buffer.config(100000, 50, 10000);
+      m_out_event_buffer.config(100, 10, 100);
+
+      m_pipeline.emplace_back(&Acquisition::writer_task<Payload>, this, std::ref(m_reader_buffer), std::ref(m_tmp_payload_buffer));
+      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_tmp_payload_buffer), std::ref(m_out_event_buffer));
+    } else {
+      m_reader_buffer.config(100000, 50, 10000);
+      m_decoder_buffer.config(100000, 10, 1000);
+      m_out_event_buffer.config(10000, 10, 1000);
+
+      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_reader_buffer), std::ref(m_decoder_buffer));
+      m_pipeline.emplace_back(&Acquisition::writer_task<Event>, this, std::ref(m_decoder_buffer), std::ref(m_out_event_buffer));
+    }
+
+    if (process_events) {
+      m_pipeline.emplace_back(&Acquisition::monitor_task, this, std::ref(m_out_event_buffer));
+    }
+
+    m_pipeline.emplace_back(&Acquisition::reader_task, this, std::ref(m_reader_buffer));
   }
 
-  void run()
+  ~Acquisition()
   {
-    // Define data pipeline and buffers
-    FIFO<Payload> reader_buffer {};
-    FIFO<Event> decoder_buffer {};
-    FIFO<Payload> tmp_payload_buffer {};
-    FIFO<Event> tmp_event_buffer {};
+    m_is_running = false;
 
-    std::vector<std::thread> pipeline;
-    if (m_save_raw) {
-      reader_buffer.config(2000000, 50, 10000);
-      tmp_payload_buffer.config(100000, 50, 10000);
-      decoder_buffer.config(100, 10, 100);
-      pipeline.emplace_back(&Acquisition::writer_task<Payload>, this, std::ref(reader_buffer), std::ref(tmp_payload_buffer));
-      pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(tmp_payload_buffer), std::ref(decoder_buffer));
-      // pipeline.emplace_back(&Acquisition::monitor_task, this, std::ref(decoder_buffer));
-    } else {
-      reader_buffer.config(100000, 50, 10000);
-      decoder_buffer.config(100000, 10, 1000);
-      tmp_event_buffer.config(10000, 10, 1000);
-      pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(reader_buffer), std::ref(decoder_buffer));
-      pipeline.emplace_back(&Acquisition::writer_task<Event>, this, std::ref(decoder_buffer), std::ref(tmp_event_buffer));
-      // pipeline.emplace_back(&Acquisition::monitor_task, this, std::ref(tmp_event_buffer));
-    }
-
-    std::thread reader(&Acquisition::reader_task, this, std::ref(reader_buffer));
-    // std::thread logger(&Acquisition::logger_task, this);
-
-    // for (;;) {
-    //   const auto key = std::cin.get();
-    //   if (key == 'x') {
-    //     m_is_running = false;
-    //     fmt::print("Exiting\n");
-    //     break;
-    //   }
-    // }
-
-    if (m_save_raw) {
-      monitor_task(decoder_buffer);
-    } else {
-      monitor_task(tmp_event_buffer);
-    }
-
-    // logger.join();
-
-    for (auto& thread : pipeline) {
-      if (thread.joinable()) {
-        thread.join();
+    for (size_t i = 0; i < m_pipeline.size() - 1; ++i) {
+      if (m_pipeline[i].joinable()) {
+        m_pipeline[i].join();
       }
     }
 
-    // TODO: find a proper way to break the sniffer loop
     // Send packet to unblock the sniffer's loop
+    // TODO: find a less hacky way to break this
     Tins::PacketSender sender;
     auto pkt = IP("10.0.0.3", m_fec_address) / UDP(6006) / RawPDU("tchau");
     sender.send(pkt);
-    reader.join();
+
+    m_pipeline.back().join(); // reader thread
   }
 
-  private:
   struct ReadStats {
     size_t bytes = 0;
     size_t packets = 0;
@@ -270,6 +263,12 @@ class Acquisition {
     m_stats.last = now;
   }
 
+  Stats get_stats() const { return m_stats; }
+  const std::vector<short>& get_waveform() const { return m_waveform; }
+  Hist& get_energy_hist() { return m_energy_hist; }
+  Lock<Hist> get_channel_hist() { return {m_channel_hist, m_channel_mutex}; }
+
+  private:
   void reader_task(FIFO<Payload>& output)
   {
     // Find interface do listen
@@ -347,20 +346,22 @@ class Acquisition {
     }
   }
 
-  std::string next_file_name(std::string_view extension = "raw")
+  std::string next_file_name(std::string_view extension = "raw", bool increment = true)
   {
     auto file_name = fmt::format("{}-{:04d}.{}", m_file_prefix, m_file_count, extension);
-    ++m_file_count;
+    if (increment) {
+      ++m_file_count;
+    }
     return file_name;
   }
 
   template <typename T>
-  std::string next_file_name()
+  std::string next_file_name(bool increment = true)
   {
     if constexpr (std::is_same<T, Payload>::value) {
-      return next_file_name("raw");
+      return next_file_name("raw", increment);
     }
-    return next_file_name("rawev");
+    return next_file_name("rawev", increment);
   }
 
   template <typename T>
@@ -429,65 +430,20 @@ class Acquisition {
     fmt::print("Done\n");
   }
 
-  static int channel_id(const Event& event, size_t waveform)
-  {
-    auto header = event.get_header(waveform);
-    constexpr int sampa_channels = 32;
-    return sampa_channels * header.sampa_addr() + header.channel_addr();
-  }
-
   void monitor_task(FIFO<Event>& input)
   {
-    TApplication app("app", nullptr, nullptr);
-
-    TCanvas canvas("SampaSRS", "SampaSRS", 1400, 800);
-    TPad text_pad("info_pad", "The pad 20% of the height", 0.0, 0.9, 1.0, 1.0);
-    TPad graph_pad("graph_pad", "The pad 80% of the height", 0.0, 0.0, 1.0, 0.9);
-    graph_pad.Divide(3);
-    text_pad.Draw();
-    graph_pad.Draw();
-
-    graph_pad.cd(1);
-    constexpr int adc_resolution = 1024;
-    TH1F energy_hist("energy_hist", "Energy Spectrum", adc_resolution, 0, adc_resolution);
-    energy_hist.GetXaxis()->SetTitle("ADC");
-    energy_hist.GetYaxis()->SetTitle("Count");
-    energy_hist.SetStats(false);
-    energy_hist.SetDirectory(nullptr);
-    energy_hist.Draw();
-
-    graph_pad.cd(2);
-    int min_channel = 0;
-    int max_channel = 128;
-    TH1F channels_hist("channels_hits", "Channel Hits", max_channel - min_channel, min_channel, max_channel);
-    channels_hist.GetXaxis()->SetTitle("Channel");
-    channels_hist.GetYaxis()->SetTitle("Count");
-    channels_hist.SetStats(false);
-    channels_hist.SetDirectory(nullptr);
-    channels_hist.Draw();
-
-    graph_pad.cd(3);
-    bool draw_waveform = false;
-    constexpr int max_words = 1002;
-    TGraph waveform_graph(max_words);
-    waveform_graph.SetMaximum(1023);
-    waveform_graph.SetTitle("Waveform");
-    waveform_graph.GetXaxis()->SetTitle("Time");
-    waveform_graph.GetYaxis()->SetTitle("ADC");
-    waveform_graph.Draw();
-
-    auto* rc = static_cast<TRootCanvas*>(canvas.GetCanvasImp()); // NOLINT
-    rc->Connect("CloseWindow()", "TApplication", gApplication, "Terminate()");
+    namespace bh = boost::histogram;
+    m_waveform.reserve(1002);
+    m_energy_hist = bh::make_histogram(HistAxis(0, 1024));
 
     bool first_event = true;
-    auto last_graph_update = std::chrono::steady_clock::now();
-    auto last_info_update = std::chrono::steady_clock::now();
-    const auto timeout = std::chrono::milliseconds(100); // Min interval between canvas updates
+    const auto get_timeout = std::chrono::milliseconds(100); // Min interval between canvas updates
+
+    Timer waveform_timer(std::chrono::milliseconds(250));
+    Timer stats_timer(std::chrono::milliseconds(1000));
 
     while (m_is_running) {
-      auto& events = input.get(timeout.count());
-
-      gSystem->ProcessEvents();
+      auto& events = input.get(get_timeout.count());
 
       // Process events data
       for (const auto& event : events) {
@@ -498,14 +454,14 @@ class Acquisition {
         // Find channel and value of the highest adc measurement for this event
         size_t selected_waveform = 0; // event channel waveform with highest adc value
         short energy = 0;             // highest event adc value
-        int current_min_channel = std::numeric_limits<int>::max();
-        int current_max_channel = 0;
+        int min_channel = std::numeric_limits<int>::max();
+        int max_channel = 0;
 
         for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
           for (size_t word = 0; word < event.word_count(waveform); ++word) {
-            const int channel = channel_id(event, selected_waveform);
-            current_min_channel = std::min(current_min_channel, channel);
-            current_max_channel = std::max(current_max_channel, channel);
+            const int channel = event.get_header(selected_waveform).global_channel();
+            min_channel = std::min(min_channel, channel);
+            max_channel = std::max(max_channel, channel + 1);
 
             auto signal = event.get_word(waveform, word);
             if (energy < signal) {
@@ -515,86 +471,45 @@ class Acquisition {
           }
         }
 
-        // Update info graphs with selected channel and energy
+        // Update histograms
         if (energy > 0) {
-          const int channel = channel_id(event, selected_waveform);
+          const auto header = event.get_header(selected_waveform);
+          const int channel = header.global_channel();
 
           // Adjust number of channels in the histogram
           if (first_event) {
-            min_channel = current_max_channel;
-            max_channel = current_max_channel;
+            m_channel_hist = bh::make_histogram(HistAxis(min_channel, max_channel));
             first_event = false;
-          } else if (min_channel > current_min_channel || max_channel < current_max_channel) {
-            min_channel = std::min(current_min_channel, min_channel);
-            max_channel = std::max(current_max_channel, max_channel);
-            channels_hist.SetBins(max_channel - min_channel, min_channel, max_channel);
+          } else if (
+              m_channel_hist.axis(0).begin()->lower() > min_channel
+              || m_channel_hist.axis(0).end()->lower() < max_channel) {
+            //  Grow the channel histogram, the lock is needed to prevent data races during resize
+            auto lock_hist = get_channel_hist();
+            resize(lock_hist.item, min_channel, max_channel);
           }
 
-          channels_hist.Fill(channel);
-          energy_hist.Fill(energy);
+          m_channel_hist(channel);
+          m_energy_hist(energy);
 
-          if (!draw_waveform) {
-            const auto words = static_cast<int>(event.word_count(selected_waveform));
-            waveform_graph.Set(words);
-            for (int i = 0; i < words; ++i) {
-              waveform_graph.SetPoint(i, i, event.get_word(selected_waveform, i));
+          if (waveform_timer) {
+            const auto size = std::min(static_cast<size_t>(header.word_count()), m_waveform.capacity()); // this min will prevent reallocations
+            m_waveform.resize(size);
+            for (size_t i = 0; i < size; ++i) {
+              m_waveform[i] = event.get_word(selected_waveform, i);
             }
-            draw_waveform = true;
           }
         }
       }
 
       // Update info
-      static constexpr auto info_interval = std::chrono::milliseconds(1000);
-      const auto now = std::chrono::steady_clock::now();
-      if (now - last_info_update > info_interval) {
+      if (stats_timer) {
         update_stats();
-        last_info_update = now;
-      }
-
-      // Redraw graphs at a fixed rate
-      if (now - last_graph_update > timeout) {
-        const auto reader_info = fmt::format("Reader: {:5.1f} MB/s - Buffer usage {:5.1f} % - load {:5.1f} %",
-            m_stats.read_speed, m_stats.read_buffer_use, m_stats.read_load);
-        const auto decoder_info = fmt::format("Decoder: Events {} - {:.0f} Events/s - Invalid events {:5.1f} % - load {:5.1f} %",
-            m_stats.valid_events, m_stats.valid_event_rate, m_stats.invalid_event_ratio, m_stats.decode_load);
-        const auto writer_info = fmt::format("Writer: {:5.1f} MB/s - load {:5.1f} %\n",
-            m_stats.write_speed, m_stats.write_load);
-
-        text_pad.cd();
-        TText reader_text(0, 0.8, reader_info.data());
-        reader_text.SetTextSize(0.25);
-        reader_text.Draw();
-        TText decoder_text(0, 0.5, decoder_info.data());
-        decoder_text.SetTextSize(0.25);
-        decoder_text.Draw();
-        TText writer_text(0, 0.2, writer_info.data());
-        writer_text.SetTextSize(0.25);
-        writer_text.Draw();
-
-        graph_pad.cd(1);
-        energy_hist.Draw();
-
-        graph_pad.cd(2);
-        channels_hist.Draw();
-
-        if (draw_waveform) {
-          graph_pad.cd(3);
-          waveform_graph.Draw("apl");
-          draw_waveform = false;
-        }
-
-        canvas.Modified();
-        canvas.Update();
-        last_graph_update = now;
       }
     }
-    app.Run();
   }
 
   std::string m_file_prefix;
   std::string m_fec_address;
-  bool m_save_raw;
 
   ReadStats m_read_stats {};
   DecodeStats m_decoder_stats {};
@@ -603,6 +518,19 @@ class Acquisition {
 
   int m_file_count = 0;
   bool m_is_running = true;
+
+  // Define data pipeline and buffers
+  std::vector<std::thread> m_pipeline;
+  FIFO<Payload> m_reader_buffer {};
+  FIFO<Event> m_decoder_buffer {};
+  FIFO<Payload> m_tmp_payload_buffer {};
+  FIFO<Event> m_out_event_buffer {};
+
+  // Monitor stuff
+  Hist m_energy_hist {};
+  Hist m_channel_hist {};
+  std::vector<short> m_waveform {};
+  std::mutex m_channel_mutex {};
 };
 
 } // namespace sampasrs

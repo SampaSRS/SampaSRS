@@ -43,20 +43,21 @@ if (ROOT_FOUND)
 # include("${ROOT_DIR}/modules/RootNewMacros.cmake")
 message(STATUS "ROOT found")
     add_executable(sampa_decoder sampa_decoder.cpp)
-    add_executable(sampa_acquisition sampa_acquisition.cpp)
     add_executable(clustering clustering.cpp)
-
+    
     add_library(sampa_root SHARED)
-    target_link_libraries(sampa_root PUBLIC ROOT::Tree ROOT::TreePlayer ROOT::Graf ROOT::Gpad ROOT::Hist)
+    target_link_libraries(sampa_root PUBLIC ROOT::Tree ROOT::TreePlayer)
     target_include_directories(sampa_root PUBLIC include)
     root_generate_dictionary(sampa_dicts LINKDEF include/sampasrs/LinkDef.h MODULE sampa_root)
-
+    
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
     target_link_libraries(clustering PRIVATE sampasrs sampa_root)
-    target_link_libraries(sampa_acquisition PRIVATE sampasrs sampa_root)
-else()
+    else()
     message(WARNING "ROOT not found, sampa_decoder won't be compiled")
-endif()
+    endif()
+
+add_executable(sampa_acquisition sampa_acquisition.cpp)
+target_link_libraries(sampa_acquisition PRIVATE sampasrs)
 
 add_executable(sampa_control sampa_control.cpp)
 target_link_libraries(sampa_control PRIVATE sampasrs)
@@ -69,9 +70,22 @@ add_executable(check_raw check_raw.cpp)
 add_executable(replay replay.cpp)
 target_link_libraries(replay PRIVATE sampasrs)
 
+include(hello_imgui_add_app)
+hello_imgui_add_app(
+  sampa_gui
+  sampa_gui.cpp
+  ${implot_SOURCE_DIR}/implot.h
+  ${implot_SOURCE_DIR}/implot_internal.h
+  ${implot_SOURCE_DIR}/implot.cpp
+  ${implot_SOURCE_DIR}/implot_items.cpp
+  ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
+  ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
+)
+target_include_directories(sampa_gui PRIVATE ${implot_SOURCE_DIR})
+target_link_libraries(sampa_gui PRIVATE sampasrs)
 
 install(
-    TARGETS sampa_decoder sampa_control sampa_acquisition sampa_root clustering
+    TARGETS sampa_decoder sampa_control sampa_acquisition sampa_root clustering sampa_gui
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin

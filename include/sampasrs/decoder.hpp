@@ -87,6 +87,13 @@ struct Hit {
         (word_count() + words_per_hit - 1) / words_per_hit + 1);
   }
 
+  // 32 * sampa + channel
+  int global_channel() const
+  {
+    static constexpr int sampa_channels = 32;
+    return sampa_channels * sampa_addr() + channel_addr();
+  }
+
   // Data fields
   short word4() const { return static_cast<short>(bit_range<42, 52>()); }
   short word3() const { return static_cast<short>(bit_range<32, 42>()); }
