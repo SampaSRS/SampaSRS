@@ -34,3 +34,6 @@ The executable `sampa_acquisition` needs special permissions to read raw network
     sudo setcap cap_net_raw=pe sampa_acquisition
 
 and run it as a normal user.
+To avoid the BOOST Download use:
+
+    export CPM_SOURCE_CACHE=$HOME/.local/share/CPM/cache
