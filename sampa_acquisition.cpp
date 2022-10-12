@@ -19,8 +19,7 @@ int main(int argc, const char* argv[])
   }
 
   const bool save_raw = true;
-  const bool process_events = true;
-  sampasrs::Acquisition sampa(file_prefix, save_raw, process_events); // Start aquisition
+  sampasrs::Acquisition sampa(file_prefix, save_raw, {}, address); // Start aquisition
 
   sampasrs::Timer info_timer(std::chrono::milliseconds(1000));
 

@@ -1,9 +1,5 @@
 #pragma once
 
-#include <boost/histogram/make_histogram.hpp>
-#include <filesystem>
-#include <sampasrs/root_fix.hpp>
-
 #include <sampasrs/decoder.hpp>
 #include <sampasrs/utils.hpp>
 
@@ -17,12 +13,14 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <limits>
 #include <mutex>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -30,20 +28,6 @@
 #include <vector>
 
 namespace sampasrs {
-
-using HistAxis = boost::histogram::axis::integer<int, boost::histogram::use_default, boost::histogram::axis::option::none_t>; // no under-overflow
-using Hist = boost::histogram::histogram<std::tuple<HistAxis>>;
-
-// Grow histogram limits if needed
-static void resize(Hist& hist, int min, int max)
-{
-  using namespace boost::histogram;
-  auto tmp = make_histogram(HistAxis(min, max));
-  for (auto&& bin : indexed(hist)) {
-    tmp(bin.bin(0).center(), weight(*bin));
-  }
-  hist = std::move(tmp);
-}
 
 // Helper class to pass data between different threads
 template <typename T>
@@ -99,6 +83,7 @@ class FIFO {
 
   size_t size() const { return m_buffer.size(); }
   size_t capacity() const { return m_buffer.capacity(); }
+  bool empty() const { return size() == 0; }
   bool enable() const { return capacity() != 0; }
 
   private:
@@ -112,10 +97,13 @@ class FIFO {
 
 // Network sniffer and raw data store
 class Acquisition {
-  using fast_clock = std::chrono::high_resolution_clock;
-
   public:
-  explicit Acquisition(const std::string& file_prefix, bool save_raw = true, bool process_events = true, const std::string& fec_address = "10.0.0.2")
+  using fast_clock = std::chrono::high_resolution_clock;
+  using Clock = std::chrono::steady_clock;
+
+  explicit Acquisition(const std::string& file_prefix, bool save_raw = true,
+      const std::optional<std::function<void(Event&&)>>& event_handler = {},
+      const std::string& fec_address = "10.0.0.2")
       : m_file_prefix(file_prefix)
       , m_fec_address(fec_address)
   {
@@ -125,28 +113,24 @@ class Acquisition {
       throw std::runtime_error(fmt::format("File \"{}\" exists", first_file_name));
     }
 
-    // Start data aquisition and processing
-    if (save_raw) {
-      m_reader_buffer.config(2000000, 50, 10000);
-      m_tmp_payload_buffer.config(100000, 50, 10000);
-      m_out_event_buffer.config(100, 10, 100);
+    const auto save = save_raw ? Store::Raw : Store::Event;
+    start(save, event_handler);
+  }
 
-      m_pipeline.emplace_back(&Acquisition::writer_task<Payload>, this, std::ref(m_reader_buffer), std::ref(m_tmp_payload_buffer));
-      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_tmp_payload_buffer), std::ref(m_out_event_buffer));
-    } else {
-      m_reader_buffer.config(100000, 50, 10000);
-      m_decoder_buffer.config(100000, 10, 1000);
-      m_out_event_buffer.config(10000, 10, 1000);
+  explicit Acquisition(const std::function<void(Event&&)>& event_handler, const std::string& fec_address = "10.0.0.2")
+      : m_fec_address(fec_address)
+  {
+    start(Store::Raw, event_handler);
+  }
 
-      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_reader_buffer), std::ref(m_decoder_buffer));
-      m_pipeline.emplace_back(&Acquisition::writer_task<Event>, this, std::ref(m_decoder_buffer), std::ref(m_out_event_buffer));
-    }
+  void stop(size_t events = 0)
+  {
+    std::mutex m;
+    std::condition_variable v;
+    std::unique_lock<std::mutex> lock(m);
 
-    if (process_events) {
-      m_pipeline.emplace_back(&Acquisition::monitor_task, this, std::ref(m_out_event_buffer));
-    }
-
-    m_pipeline.emplace_back(&Acquisition::reader_task, this, std::ref(m_reader_buffer));
+    v.wait(lock, [&] { return events >= m_decoder_stats.valid_events; });
+    m_is_running = false;
   }
 
   ~Acquisition()
@@ -173,31 +157,31 @@ class Acquisition {
     size_t packets = 0;
     size_t buffer_items = 0;
     size_t buffer_size = 0;
-    std::chrono::steady_clock::duration total_time {};
-    std::chrono::steady_clock::duration process_time {};
+    Clock::duration total_time {};
+    Clock::duration process_time {};
   };
 
   struct DecodeStats {
     size_t bytes = 0;
     size_t valid_events = 0;
     size_t total_events = 0;
-    std::chrono::steady_clock::duration total_time {};
-    std::chrono::steady_clock::duration process_time {};
+    Clock::duration total_time {};
+    Clock::duration process_time {};
   };
 
   struct WriteStats {
     size_t bytes = 0;
     size_t buffer_items = 0;
     size_t buffer_size = 0;
-    std::chrono::steady_clock::duration total_time {};
-    std::chrono::steady_clock::duration process_time {};
+    Clock::duration total_time {};
+    Clock::duration process_time {};
   };
 
   struct Stats {
     ReadStats read {};
     DecodeStats decode {};
     WriteStats write {};
-    std::chrono::steady_clock::time_point last {};
+    Clock::time_point last {};
 
     float read_speed {};   // in MB
     float write_speed {};  // in MB
@@ -220,9 +204,12 @@ class Acquisition {
     size_t total_events {};
   };
 
+  const Stats& get_stats() const { return m_stats; }
+
+  private:
   void update_stats()
   {
-    const auto now = std::chrono::steady_clock::now();
+    const auto now = Clock::now();
     const auto dt = std::chrono::duration<float>(now - m_stats.last).count();
 
     // Current stats value
@@ -263,12 +250,49 @@ class Acquisition {
     m_stats.last = now;
   }
 
-  Stats get_stats() const { return m_stats; }
-  const std::vector<short>& get_waveform() const { return m_waveform; }
-  Hist& get_energy_hist() { return m_energy_hist; }
-  Lock<Hist> get_channel_hist() { return {m_channel_hist, m_channel_mutex}; }
+  enum class Store {
+    None,
+    Raw,
+    Event
+  };
 
-  private:
+  void start(Store store, const std::optional<std::function<void(Event&&)>>& event_handler = {})
+  {
+    // Start data aquisition and processing
+    switch (store) {
+    case Store::None:
+      m_reader_buffer.config(100000, 50, 10000);
+      m_out_event_buffer.config(10000, 10, 1000);
+
+      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_reader_buffer), std::ref(m_out_event_buffer));
+      break;
+
+    case Store::Raw:
+      m_reader_buffer.config(2000000, 50, 10000);
+      m_tmp_payload_buffer.config(100000, 50, 100);
+      m_out_event_buffer.config(1000, 10, 100);
+
+      m_pipeline.emplace_back(&Acquisition::writer_task<Payload>, this, std::ref(m_reader_buffer), std::ref(m_tmp_payload_buffer));
+      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_tmp_payload_buffer), std::ref(m_out_event_buffer));
+      break;
+
+    case Store::Event:
+      m_reader_buffer.config(100000, 50, 10000);
+      m_decoder_buffer.config(100000, 10, 1000);
+      m_out_event_buffer.config(10000, 10, 1000);
+
+      m_pipeline.emplace_back(&Acquisition::decoder_task, this, std::ref(m_reader_buffer), std::ref(m_decoder_buffer));
+      m_pipeline.emplace_back(&Acquisition::writer_task<Event>, this, std::ref(m_decoder_buffer), std::ref(m_out_event_buffer));
+      break;
+    }
+
+    if (event_handler.has_value()) {
+      m_pipeline.emplace_back(&Acquisition::event_handler_task, this, std::ref(m_out_event_buffer), event_handler.value());
+    }
+
+    m_pipeline.emplace_back(&Acquisition::reader_task, this, std::ref(m_reader_buffer));
+  }
+
   void reader_task(FIFO<Payload>& output)
   {
     // Find interface do listen
@@ -291,9 +315,9 @@ class Acquisition {
     m_read_stats.buffer_size = output.capacity();
 
     while (m_is_running) {
-      const auto start = std::chrono::steady_clock::now();
+      const auto start = Clock::now();
       Packet packet = sniffer.next_packet();
-      const auto start_process = std::chrono::steady_clock::now();
+      const auto start_process = Clock::now();
 
       if (!packet) {
         // Error reading packet
@@ -308,7 +332,7 @@ class Acquisition {
 
       m_read_stats.buffer_items = output.size();
 
-      const auto end = std::chrono::steady_clock::now();
+      const auto end = Clock::now();
       m_read_stats.total_time += end - start;
       m_read_stats.process_time += end - start_process;
     }
@@ -325,24 +349,30 @@ class Acquisition {
         output.put(std::move(event));
       }
     };
+    Timer stats_timer(std::chrono::milliseconds(1000)); // Stats update interval
 
     EventSorter sorter(event_handler);
     sorter.enable_header_fix = false;
     sorter.enable_remove_caca = true;
     sorter.process_invalid_events = true;
 
-    while (m_is_running) {
-      const auto start = std::chrono::steady_clock::now();
+    while (m_is_running || !input.empty()) {
+      const auto start = Clock::now();
       auto& payloads = input.get();
-      const auto start_process = std::chrono::steady_clock::now();
+      const auto start_process = Clock::now();
 
       for (auto& payload : payloads) {
         sorter.process(payload);
       }
 
-      const auto end = std::chrono::steady_clock::now();
+      const auto end = Clock::now();
       m_decoder_stats.total_time += end - start;
       m_decoder_stats.process_time += end - start_process;
+
+      // Update stats
+      if (stats_timer) {
+        update_stats();
+      }
     }
   }
 
@@ -368,12 +398,12 @@ class Acquisition {
   void writer_task(FIFO<T>& input, FIFO<T>& output)
   {
     m_write_stats.buffer_size = input.capacity();
-    const size_t max_file_size = size_t(2) << 30U; // ~2 GB in byte
+    const size_t max_file_size = size_t(2) << 30U; // ~2 GB in bytes
     auto file_size = std::numeric_limits<unsigned int>::max();
 
     std::ofstream file;
 
-    while (m_is_running) {
+    while (m_is_running || !input.empty()) {
       // Create a new file if the previous one exceeded the max size
       if (file_size > max_file_size) {
         if (file.is_open()) {
@@ -389,9 +419,9 @@ class Acquisition {
         }
       }
 
-      const auto start = std::chrono::steady_clock::now();
+      const auto start = Clock::now();
       auto& data = input.get();
-      const auto start_process = std::chrono::steady_clock::now();
+      const auto start_process = Clock::now();
 
       if (data.empty()) {
         continue;
@@ -416,100 +446,27 @@ class Acquisition {
 
       m_write_stats.buffer_items = input.size();
 
-      const auto end = std::chrono::steady_clock::now();
+      const auto end = Clock::now();
       m_write_stats.total_time += end - start;
       m_write_stats.process_time += end - start_process;
     }
-
-    fmt::print("Writing buffer to file...\n");
-    // Write remaining payloads in the buffer
-    for (const auto& x : input.get_buffer()) {
-      x.write(file);
-    }
-
-    fmt::print("Done\n");
   }
 
-  void monitor_task(FIFO<Event>& input)
+  void event_handler_task(FIFO<Event>& input, const std::function<void(Event&&)>& event_handle) const
   {
-    namespace bh = boost::histogram;
-    m_waveform.reserve(1002);
-    m_energy_hist = bh::make_histogram(HistAxis(0, 1024));
-
-    bool first_event = true;
-    const auto get_timeout = std::chrono::milliseconds(100); // Min interval between canvas updates
-
-    Timer waveform_timer(std::chrono::milliseconds(250));
-    Timer stats_timer(std::chrono::milliseconds(1000));
-
-    while (m_is_running) {
+    const auto get_timeout = std::chrono::milliseconds(100); // Max interval between event processes
+    while (m_is_running || !input.empty()) {
       auto& events = input.get(get_timeout.count());
 
       // Process events data
-      for (const auto& event : events) {
-        if (!event.valid()) {
-          continue;
-        }
-
-        // Find channel and value of the highest adc measurement for this event
-        size_t selected_waveform = 0; // event channel waveform with highest adc value
-        short energy = 0;             // highest event adc value
-        int min_channel = std::numeric_limits<int>::max();
-        int max_channel = 0;
-
-        for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
-          for (size_t word = 0; word < event.word_count(waveform); ++word) {
-            const int channel = event.get_header(selected_waveform).global_channel();
-            min_channel = std::min(min_channel, channel);
-            max_channel = std::max(max_channel, channel + 1);
-
-            auto signal = event.get_word(waveform, word);
-            if (energy < signal) {
-              selected_waveform = waveform;
-              energy = signal;
-            }
-          }
-        }
-
-        // Update histograms
-        if (energy > 0) {
-          const auto header = event.get_header(selected_waveform);
-          const int channel = header.global_channel();
-
-          // Adjust number of channels in the histogram
-          if (first_event) {
-            m_channel_hist = bh::make_histogram(HistAxis(min_channel, max_channel));
-            first_event = false;
-          } else if (
-              m_channel_hist.axis(0).begin()->lower() > min_channel
-              || m_channel_hist.axis(0).end()->lower() < max_channel) {
-            //  Grow the channel histogram, the lock is needed to prevent data races during resize
-            auto lock_hist = get_channel_hist();
-            resize(lock_hist.item, min_channel, max_channel);
-          }
-
-          m_channel_hist(channel);
-          m_energy_hist(energy);
-
-          if (waveform_timer) {
-            const auto size = std::min(static_cast<size_t>(header.word_count()), m_waveform.capacity()); // this min will prevent reallocations
-            m_waveform.resize(size);
-            for (size_t i = 0; i < size; ++i) {
-              m_waveform[i] = event.get_word(selected_waveform, i);
-            }
-          }
-        }
-      }
-
-      // Update info
-      if (stats_timer) {
-        update_stats();
+      for (auto&& event : events) {
+        event_handle(std::move(event));
       }
     }
   }
 
-  std::string m_file_prefix;
-  std::string m_fec_address;
+  std::string m_file_prefix {};
+  std::string m_fec_address {};
 
   ReadStats m_read_stats {};
   DecodeStats m_decoder_stats {};
@@ -520,17 +477,11 @@ class Acquisition {
   bool m_is_running = true;
 
   // Define data pipeline and buffers
-  std::vector<std::thread> m_pipeline;
+  std::vector<std::thread> m_pipeline {};
   FIFO<Payload> m_reader_buffer {};
   FIFO<Event> m_decoder_buffer {};
   FIFO<Payload> m_tmp_payload_buffer {};
   FIFO<Event> m_out_event_buffer {};
-
-  // Monitor stuff
-  Hist m_energy_hist {};
-  Hist m_channel_hist {};
-  std::vector<short> m_waveform {};
-  std::mutex m_channel_mutex {};
 };
 
 } // namespace sampasrs

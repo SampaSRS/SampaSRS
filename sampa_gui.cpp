@@ -1,12 +1,15 @@
 #include "sampasrs/acquisition.hpp"
 
+#include "boost/histogram.hpp"
 #include "hello_imgui/hello_imgui.h"
 #include "imgui.h"
 #include "implot.h"
 #include "misc/cpp/imgui_stdlib.h"
 
 #include <array>
+#include <chrono>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -16,19 +19,99 @@
 
 using namespace sampasrs;
 
-static short energy_data()
+using HistAxis = boost::histogram::axis::integer<int, boost::histogram::use_default, boost::histogram::axis::option::none_t>; // no under-overflow
+using Hist = boost::histogram::histogram<std::tuple<HistAxis>>;
+
+// Grow histogram limits if needed
+static void resize(Hist& hist, int min, int max)
 {
-  static std::default_random_engine rng {};
-  static std::normal_distribution<float> normal(500, 100);
-  return static_cast<short>(normal(rng));
+  using namespace boost::histogram;
+  auto tmp = make_histogram(HistAxis(min, max));
+  for (auto&& bin : indexed(hist)) {
+    tmp(bin.bin(0).center(), weight(*bin));
+  }
+  hist = std::move(tmp);
 }
 
-static short channel_data()
-{
-  static std::default_random_engine rng {};
-  static std::normal_distribution<float> normal(200, 10);
-  return static_cast<short>(normal(rng));
-}
+class Graphs {
+  public:
+  Graphs()
+  {
+    m_waveform.reserve(1003);
+  }
+
+  const std::vector<short>& get_waveform() const { return m_waveform; }
+  Hist& get_energy_hist() { return m_energy_hist; }
+  Lock<Hist> get_channel_hist() { return {m_channel_hist, m_channel_lock}; }
+  void reset()
+  {
+    m_channel_hist.reset();
+    m_energy_hist.reset();
+    m_waveform.clear();
+  }
+
+  void event_handle(Event&& event)
+  {
+    if (!event.valid()) {
+      return;
+    }
+
+    // Find channel and value of the highest adc measurement for this event
+    size_t selected_waveform = 0; // event channel waveform with highest adc value
+    short energy = 0;             // highest event adc value
+    int min_channel = std::numeric_limits<int>::max();
+    int max_channel = 0;
+
+    for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
+      for (size_t word = 0; word < event.word_count(waveform); ++word) {
+        const int channel = event.get_header(selected_waveform).global_channel();
+        min_channel = std::min(min_channel, channel);
+        max_channel = std::max(max_channel, channel + 1);
+
+        auto signal = event.get_word(waveform, word);
+        if (energy < signal) {
+          selected_waveform = waveform;
+          energy = signal;
+        }
+      }
+    }
+
+    // Update histograms
+    if (energy > 0) {
+      const auto header = event.get_header(selected_waveform);
+      const int channel = header.global_channel();
+
+      // Adjust number of channels in the histogram
+      if (m_channel_hist.size() == 0) {
+        m_channel_hist = boost::histogram::make_histogram(HistAxis(min_channel, max_channel));
+      } else if (
+          m_channel_hist.axis(0).begin()->lower() > min_channel
+          || m_channel_hist.axis(0).end()->lower() < max_channel) {
+        //  Grow the channel histogram, the lock is needed to prevent data races during resize
+        auto lock_hist = get_channel_hist();
+        resize(lock_hist.item, min_channel, max_channel);
+      }
+
+      m_channel_hist(channel);
+      m_energy_hist(energy);
+
+      if (m_waveform_timer) {
+        const auto size = std::min(static_cast<size_t>(header.word_count()), m_waveform.capacity()); // this min will prevent reallocations
+        m_waveform.resize(size);
+        for (size_t i = 0; i < size; ++i) {
+          m_waveform[i] = event.get_word(selected_waveform, i);
+        }
+      }
+    }
+  }
+
+  private:
+  Timer m_waveform_timer {std::chrono::milliseconds(250)};
+  Hist m_energy_hist {boost::histogram::make_histogram(HistAxis(0, 1024))};
+  Hist m_channel_hist {};
+  std::vector<short> m_waveform {};
+  std::mutex m_channel_lock;
+};
 
 template <typename Number>
 void gui_info(const char* label, Number value, const char* suffix = "",
@@ -95,6 +178,7 @@ class App {
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {1, 0, 0, 1});
       if (ImGui::Button("Stop", ImVec2 {80, 50})) {
         m_acquisition.reset();
+        m_graphs.reset();
       }
       ImGui::SameLine();
       if (save_raw) {
@@ -108,7 +192,12 @@ class App {
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0, 0.5, 0, 1});
       if (ImGui::Button("Start", ImVec2 {80, 50})) {
         try {
-          m_acquisition = std::make_unique<Acquisition>(file_prefix, save_raw, process_events, fec_address);
+          m_acquisition = std::make_unique<Acquisition>(
+              file_prefix,
+              save_raw,
+              [&](Event&& event) { m_graphs.event_handle(std::move(event)); },
+              fec_address);
+
           prefix_not_available = false;
         } catch (const std::runtime_error& e) {
           prefix_not_available = true;
@@ -170,14 +259,14 @@ class App {
       static const int fit_flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
       if (ImPlot::BeginPlot("Energy Spectrum")) {
         ImPlot::SetupAxes("ADC", "Events", fit_flags, fit_flags);
-        auto& hist = m_acquisition->get_energy_hist();
+        auto& hist = m_graphs.get_energy_hist();
         ImPlot::PlotStairsG("", hist_data_getter, &hist, static_cast<int>(hist.size()));
         ImPlot::EndPlot();
       }
 
       if (ImPlot::BeginPlot("Channel Hits")) {
         ImPlot::SetupAxes("Channel", "Events", fit_flags, fit_flags);
-        auto hist = m_acquisition->get_channel_hist();
+        auto hist = m_graphs.get_channel_hist();
         ImPlot::PlotStairsG("", hist_data_getter, &hist.item, static_cast<int>(hist.item.size()));
         ImPlot::EndPlot();
       }
@@ -185,7 +274,7 @@ class App {
       if (ImPlot::BeginPlot("Waveform")) {
         ImPlot::SetupAxes("Time", "ADC", fit_flags);
         ImPlot::SetupAxesLimits(0, 1000, 0, 1024);
-        const auto& waveform = m_acquisition->get_waveform();
+        const auto& waveform = m_graphs.get_waveform();
         const auto size = static_cast<int>(waveform.size());
         if (size != 0) {
           ImPlot::PlotLine("", waveform.data(), size);
@@ -200,6 +289,7 @@ class App {
   }
 
   private:
+  Graphs m_graphs {};
   std::unique_ptr<Acquisition> m_acquisition;
 };
 
