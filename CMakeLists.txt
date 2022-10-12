@@ -45,7 +45,10 @@ message(STATUS "ROOT found")
     add_executable(sampa_decoder sampa_decoder.cpp)
     add_executable(sampa_acquisition sampa_acquisition.cpp)
     add_executable(clustering clustering.cpp)
+<<<<<<< HEAD
     add_executable(create_pedestal create_pedestal.cpp)
+=======
+>>>>>>> main
 
     add_library(sampa_root SHARED)
     target_link_libraries(sampa_root PUBLIC ROOT::Tree ROOT::TreePlayer ROOT::Graf ROOT::Gpad ROOT::Hist)
@@ -54,7 +57,10 @@ message(STATUS "ROOT found")
 
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
     target_link_libraries(clustering PRIVATE sampasrs sampa_root)
+<<<<<<< HEAD
     target_link_libraries(create_pedestal PRIVATE sampasrs sampa_root)
+=======
+>>>>>>> main
     target_link_libraries(sampa_acquisition PRIVATE sampasrs sampa_root)
 else()
     message(WARNING "ROOT not found, sampa_decoder won't be compiled")
@@ -73,7 +79,11 @@ target_link_libraries(replay PRIVATE sampasrs)
 
 
 install(
+<<<<<<< HEAD
     TARGETS sampa_decoder sampa_control sampa_acquisition sampa_root clustering create_pedestal
+=======
+    TARGETS sampa_decoder sampa_control sampa_acquisition sampa_root clustering
+>>>>>>> main
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin

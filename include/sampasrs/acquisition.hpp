@@ -360,7 +360,11 @@ class Acquisition {
     if constexpr (std::is_same<T, Payload>::value) {
       return next_file_name("raw");
     }
+<<<<<<< HEAD
     return next_file_name("rawev");
+=======
+    return next_file_name("rawevent");
+>>>>>>> main
   }
 
   template <typename T>
