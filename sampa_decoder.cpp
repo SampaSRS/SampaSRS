@@ -116,6 +116,7 @@ int main(int argc, const char* argv[])
     const auto file_extension = file_name.extension().string();
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     std::cout << "Reading file: " << file_name;
     if (file_extension == ".raw") {
       std::cout << " as raw file\n";
@@ -124,6 +125,11 @@ int main(int argc, const char* argv[])
     if (file_extension == ".raw") {
       std::cout << "Reading raw file\n";
 >>>>>>> main
+=======
+    std::cout << "Reading file: " << file_name;
+    if (file_extension == ".raw") {
+      std::cout << " as raw file\n";
+>>>>>>> origin
       std::ifstream input_file(file_name, std::ios::binary);
       if (!input_file) {
         std::cerr << "Unable to open file\n";
@@ -136,12 +142,17 @@ int main(int argc, const char* argv[])
         sorter.process(payload);
       }
 <<<<<<< HEAD
+<<<<<<< HEAD
     } else if (file_extension == ".rawev") {
       std::cout << " as raw events file\n";
 =======
     } else if (file_extension == ".rawevent") {
       std::cout << "Reading raw events file\n";
 >>>>>>> main
+=======
+    } else if (file_extension == ".rawev") {
+      std::cout << " as raw events file\n";
+>>>>>>> origin
       std::ifstream input_file(file_name, std::ios::binary);
       if (!input_file) {
         std::cerr << "Unable to open file\n";
@@ -155,10 +166,14 @@ int main(int argc, const char* argv[])
       }
     } else {
 <<<<<<< HEAD
+<<<<<<< HEAD
       std::cout << " as pcap file\n";
 =======
       std::cout << "Reading pcap file\n";
 >>>>>>> main
+=======
+      std::cout << " as pcap file\n";
+>>>>>>> origin
       FileSniffer input_file(file_name);
 
       auto sniffer_callback = [&](Packet& packet) {

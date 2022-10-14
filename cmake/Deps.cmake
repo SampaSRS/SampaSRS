@@ -61,3 +61,19 @@ if(Boost_ADDED)
     # Disable autolink
     target_compile_definitions(Boost::boost INTERFACE BOOST_ALL_NO_LIB=1)
 endif()
+
+# ImGui
+CPMAddPackage(
+  NAME hello_imgui
+  GITHUB_REPOSITORY pthom/hello_imgui
+  GIT_TAG master
+  OPTIONS "HELLOIMGUI_USE_SDL_OPENGL3 ON"
+)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${hello_imgui_SOURCE_DIR}/hello_imgui_cmake)
+set(imgui_SOURCE_DIR ${hello_imgui_SOURCE_DIR}/external/imgui)
+
+CPMAddPackage(
+  NAME implot
+  GITHUB_REPOSITORY epezent/implot
+  VERSION 0.14
+)
