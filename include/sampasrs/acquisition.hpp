@@ -146,7 +146,7 @@ class Acquisition {
     // Send packet to unblock the sniffer's loop
     // TODO: find a less hacky way to break this
     Tins::PacketSender sender;
-    auto pkt = IP("10.0.0.3", m_fec_address) / UDP(6006) / RawPDU("tchau");
+    auto pkt = Tins::IP("10.0.0.3", m_fec_address) / Tins::UDP(6006) / Tins::RawPDU("tchau");
     sender.send(pkt);
 
     m_pipeline.back().join(); // reader thread
@@ -295,6 +295,7 @@ class Acquisition {
 
   void reader_task(FIFO<Payload>& output)
   {
+    using namespace Tins;
     // Find interface do listen
     NetworkInterface iface;
     if (m_fec_address.empty()) {

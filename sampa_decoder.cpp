@@ -1,12 +1,14 @@
 #include <sampasrs/root_fix.hpp>
 
-#include <sampasrs/acquisition.hpp>
 #include <sampasrs/decoder.hpp>
 #include <sampasrs/mapping.hpp>
 
 #include <TFile.h>
 #include <TTree.h>
+
+#ifdef WITH_LIBPCAP
 #include <tins/tins.h>
+#endif
 
 #include <chrono>
 #include <cstddef>
@@ -19,7 +21,6 @@
 
 int main(int argc, const char* argv[])
 {
-  using namespace Tins;
   using namespace sampasrs;
 
   if (argc < 2) {
@@ -143,16 +144,21 @@ int main(int argc, const char* argv[])
         save_event(std::move(event));
       }
     } else {
+#ifdef WITH_LIBPCAP
       std::cout << " as pcap file\n";
-      FileSniffer input_file(file_name);
+      Tins::FileSniffer input_file(file_name);
 
-      auto sniffer_callback = [&](Packet& packet) {
+      auto sniffer_callback = [&](Tins::Packet& packet) {
         Payload payload(std::move(packet));
         input_bytes += payload.byte_size();
         sorter.process(payload);
         return true;
       };
       input_file.sniff_loop(sniffer_callback);
+#else
+      std::cerr << "Unsupported file format\n";
+      return 1;
+#endif
     }
   }
 

@@ -5,8 +5,11 @@
 #include <boost/core/bit.hpp>
 #include <boost/endian/conversion.hpp>
 #include <fmt/core.h>
+
+#ifdef WITH_LIBPCAP
 #include <tins/packet.h>
 #include <tins/rawpdu.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -28,7 +31,6 @@
 
 namespace sampasrs {
 
-using namespace Tins;
 using payload_data = std::vector<uint8_t>;
 
 inline uint8_t odd_parity(uint64_t word)
@@ -282,11 +284,13 @@ struct Payload {
   {
   }
 
-  explicit Payload(Packet&& packet)
+#ifdef WITH_LIBPCAP
+  explicit Payload(Tins::Packet&& packet)
       : timestamp(std::chrono::microseconds(packet.timestamp()).count())
-      , data(std::move(packet.pdu()->rfind_pdu<RawPDU>().payload()))
+      , data(std::move(packet.pdu()->rfind_pdu<Tins::RawPDU>().payload()))
   {
   }
+#endif
 
   static Payload read(std::ifstream& file)
   {

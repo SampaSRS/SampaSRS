@@ -1,9 +1,6 @@
 
 #include <sampasrs/root_fix.hpp>
 
-#include <sampasrs/acquisition.hpp>
-#include <tins/tins.h>
-
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -19,9 +16,6 @@
 
 int main(int argc, const char* argv[])
 {
-  using namespace Tins;
-  using namespace sampasrs;
-
   if (argc < 2) {
     std::cerr << "Usage: sampa_decoder <input file.raw>\n";
     return 1;

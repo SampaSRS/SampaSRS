@@ -19,31 +19,7 @@ endif()
 
 include(${CPM_DOWNLOAD_LOCATION})
 
-# Install dependencies
-set(LIBTINS_OPTIONS
-    "LIBTINS_ENABLE_ACK_TRACKER OFF"
-    "LIBTINS_ENABLE_TCP_STREAM_CUSTOM_DATA OFF"
-    "LIBTINS_ENABLE_WPA2 OFF"
-    "LIBTINS_BUILD_TESTS OFF"
-    "LIBTINS_BUILD_EXAMPLES OFF"
-    "LIBTINS_BUILD_SHARED OFF"
-)
-
-if(WIN32)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Windows build")
-    list(APPEND LIBTINS_OPTIONS "LIBTINS_BUILD_SHARED OFF")
-    add_compile_definitions(TINS_STATIC NOMINMAX)
-endif()
-
-# Getting dependecies
-CPMAddPackage("https://github.com/mfontanini/libtins.git@4.4"
-    NAME tins
-    VERSION 4.4
-    GIT_REPOSITORY "https://github.com/mfontanini/libtins.git"
-    OPTIONS
-    ${LIBTINS_OPTIONS}
-    EXCLUDE_FROM_ALL TRUE)
-
+# Install required dependencies
 CPMAddPackage("https://github.com/fmtlib/fmt.git#9.0.0")
 
 CPMAddPackage(
@@ -62,18 +38,46 @@ if(Boost_ADDED)
     target_compile_definitions(Boost::boost INTERFACE BOOST_ALL_NO_LIB=1)
 endif()
 
-# ImGui
-CPMAddPackage(
-  NAME hello_imgui
-  GITHUB_REPOSITORY pthom/hello_imgui
-  GIT_TAG master
-  OPTIONS "HELLOIMGUI_USE_SDL_OPENGL3 ON"
-)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${hello_imgui_SOURCE_DIR}/hello_imgui_cmake)
-set(imgui_SOURCE_DIR ${hello_imgui_SOURCE_DIR}/external/imgui)
+# Install optional dependencies
+if (SAMPA_BUILD_ACQUISITION)
+    set(LIBTINS_OPTIONS
+        "LIBTINS_ENABLE_ACK_TRACKER OFF"
+        "LIBTINS_ENABLE_TCP_STREAM_CUSTOM_DATA OFF"
+        "LIBTINS_ENABLE_WPA2 OFF"
+        "LIBTINS_BUILD_TESTS OFF"
+        "LIBTINS_BUILD_EXAMPLES OFF"
+        "LIBTINS_BUILD_SHARED OFF"
+    )
 
-CPMAddPackage(
-  NAME implot
-  GITHUB_REPOSITORY epezent/implot
-  VERSION 0.14
-)
+    if(WIN32)
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "Windows build")
+        list(APPEND LIBTINS_OPTIONS "LIBTINS_BUILD_SHARED OFF")
+        add_compile_definitions(TINS_STATIC NOMINMAX)
+    endif()
+
+    CPMAddPackage("https://github.com/mfontanini/libtins.git@4.4"
+        NAME tins
+        VERSION 4.4
+        GIT_REPOSITORY "https://github.com/mfontanini/libtins.git"
+        OPTIONS
+        ${LIBTINS_OPTIONS}
+        EXCLUDE_FROM_ALL TRUE)
+endif()
+
+if(SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
+    # ImGui
+    CPMAddPackage(
+    NAME hello_imgui
+    GITHUB_REPOSITORY pthom/hello_imgui
+    GIT_TAG master
+    OPTIONS "HELLOIMGUI_USE_SDL_OPENGL3 ON"
+    )
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${hello_imgui_SOURCE_DIR}/hello_imgui_cmake)
+    set(imgui_SOURCE_DIR ${hello_imgui_SOURCE_DIR}/external/imgui)
+
+    CPMAddPackage(
+    NAME implot
+    GITHUB_REPOSITORY epezent/implot
+    VERSION 0.14
+    )
+endif()
