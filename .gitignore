@@ -8,6 +8,9 @@ config.txt
 build*
 install*
 
+# ROOT files
+*.pcm
+
 # clangd
 .cache
 
