@@ -9,6 +9,7 @@
 #include <tins/tins.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -107,12 +108,6 @@ class Acquisition {
       : m_file_prefix(file_prefix)
       , m_fec_address(fec_address)
   {
-    // Check prefix to avoid deleting old files
-    const auto first_file_name = save_raw ? next_file_name<Payload>(false) : next_file_name<Event>(false);
-    if (std::filesystem::exists(first_file_name)) {
-      throw std::runtime_error(fmt::format("File \"{}\" exists", first_file_name));
-    }
-
     const auto save = save_raw ? Store::Raw : Store::Event;
     start(save, event_handler);
   }
@@ -130,12 +125,12 @@ class Acquisition {
     std::unique_lock<std::mutex> lock(m);
 
     v.wait(lock, [&] { return events >= m_decoder_stats.valid_events; });
-    m_is_running = false;
+    m_state |= Stop;
   }
 
   ~Acquisition()
   {
-    m_is_running = false;
+    m_state |= Stop;
 
     for (size_t i = 0; i < m_pipeline.size() - 1; ++i) {
       if (m_pipeline[i].joinable()) {
@@ -145,11 +140,13 @@ class Acquisition {
 
     // Send packet to unblock the sniffer's loop
     // TODO: find a less hacky way to break this
-    Tins::PacketSender sender;
-    auto pkt = Tins::IP("10.0.0.3", m_fec_address) / Tins::UDP(6006) / Tins::RawPDU("tchau");
-    sender.send(pkt);
+    if (m_pipeline.back().joinable()) {
+      Tins::PacketSender sender;
+      auto pkt = Tins::IP("10.0.0.3", m_fec_address) / Tins::UDP(6006) / Tins::RawPDU("tchau");
+      sender.send(pkt);
 
-    m_pipeline.back().join(); // reader thread
+      m_pipeline.back().join(); // reader thread
+    }
   }
 
   struct ReadStats {
@@ -204,7 +201,17 @@ class Acquisition {
     size_t total_events {};
   };
 
+  enum State : unsigned char {
+    Run = 0,
+    Stop = 1U,
+    ReadError = 1U << 1U,
+    WriteErrorFileExists = 1U << 2U,
+    WriteErrorDirDontExists = 1U << 3U,
+    WriteErrorOpenFile = 1U << 4U,
+  };
+
   const Stats& get_stats() const { return m_stats; }
+  unsigned char get_state() const { return m_state; }
 
   private:
   void update_stats()
@@ -307,35 +314,44 @@ class Acquisition {
     std::wcout << "Listening to interface: " << iface.friendly_name() << "\n";
 
     // Sniff on interface
-    SnifferConfiguration config;
     static const char* filter = "udp port 6006 and dst host 10.0.0.3";
+    SnifferConfiguration config;
     config.set_filter(filter);
-    Sniffer sniffer(iface.name(), config);
-    sniffer.set_timeout(10);
 
-    m_read_stats.buffer_size = output.capacity();
+    try {
+      // Wont work without raw packet reading permission
+      Sniffer sniffer(iface.name(), config);
+      sniffer.set_timeout(10);
 
-    while (m_is_running) {
-      const auto start = Clock::now();
-      Packet packet = sniffer.next_packet();
-      const auto start_process = Clock::now();
+      m_read_stats.buffer_size = output.capacity();
 
-      if (!packet) {
-        // Error reading packet
-        continue;
+      while (m_state == Run) {
+        const auto start = Clock::now();
+        Packet packet = sniffer.next_packet();
+        const auto start_process = Clock::now();
+
+        if (!packet) {
+          // Error reading packet
+          continue;
+        }
+        m_read_stats.bytes += packet.pdu()->size();
+
+        Payload payload(std::move(packet));
+        ++m_read_stats.packets;
+
+        output.put(std::move(payload));
+
+        m_read_stats.buffer_items = output.size();
+
+        const auto end = Clock::now();
+        m_read_stats.total_time += end - start;
+        m_read_stats.process_time += end - start_process;
       }
-      m_read_stats.bytes += packet.pdu()->size();
-
-      Payload payload(std::move(packet));
-      ++m_read_stats.packets;
-
-      output.put(std::move(payload));
-
-      m_read_stats.buffer_items = output.size();
-
-      const auto end = Clock::now();
-      m_read_stats.total_time += end - start;
-      m_read_stats.process_time += end - start_process;
+    } catch (const Tins::pcap_error& error) {
+      std::cerr << "Error: " << error.what() << ", try running as root\n"
+                << "\n";
+      m_state |= Stop | ReadError;
+      return;
     }
   }
 
@@ -357,7 +373,7 @@ class Acquisition {
     sorter.enable_remove_caca = true;
     sorter.process_invalid_events = true;
 
-    while (m_is_running || !input.empty()) {
+    while (m_state == Run || !input.empty()) {
       const auto start = Clock::now();
       auto& payloads = input.get();
       const auto start_process = Clock::now();
@@ -404,7 +420,7 @@ class Acquisition {
 
     std::ofstream file;
 
-    while (m_is_running || !input.empty()) {
+    while (m_state == Run || !input.empty()) {
       // Create a new file if the previous one exceeded the max size
       if (file_size > max_file_size) {
         if (file.is_open()) {
@@ -414,9 +430,25 @@ class Acquisition {
 
         auto file_name = next_file_name<T>();
         fmt::print("Writing to {}\n", file_name);
+        const auto path = std::filesystem::absolute(file_name);
+
+        if (std::filesystem::exists(path)) {
+          std::cerr << "Error: File \"" << file_name << "\" exists.\n";
+          m_state |= Stop | WriteErrorFileExists;
+          return;
+        }
+
+        if (!std::filesystem::is_directory(path.parent_path())) {
+          std::cerr << "Error: Directory " << path.parent_path() << "don't exists\n";
+          m_state |= Stop | WriteErrorDirDontExists;
+          return;
+        }
+
         file.open(file_name, std::ios::binary);
         if (!file) {
-          throw std::runtime_error("Unable to create output file.");
+          std::cerr << "Error: Unable to create output file, check if the directory exists and you have permission to write to it.\n";
+          m_state |= Stop | WriteErrorOpenFile;
+          return;
         }
       }
 
@@ -456,7 +488,7 @@ class Acquisition {
   void event_handler_task(FIFO<Event>& input, const std::function<void(Event&&)>& event_handle) const
   {
     const auto get_timeout = std::chrono::milliseconds(100); // Max interval between event processes
-    while (m_is_running || !input.empty()) {
+    while (m_state == Run || !input.empty()) {
       auto& events = input.get(get_timeout.count());
 
       // Process events data
@@ -475,7 +507,7 @@ class Acquisition {
   Stats m_stats {};
 
   int m_file_count = 0;
-  bool m_is_running = true;
+  std::atomic_uchar m_state = 0;
 
   // Define data pipeline and buffers
   std::vector<std::thread> m_pipeline {};

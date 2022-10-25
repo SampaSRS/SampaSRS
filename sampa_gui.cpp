@@ -1,5 +1,6 @@
 #include "sampasrs/acquisition.hpp"
 
+#include "ImGuiFileDialog.h"
 #include "boost/histogram.hpp"
 #include "hello_imgui/hello_imgui.h"
 #include "imgui.h"
@@ -166,54 +167,114 @@ class App {
 
   void start_acquisition()
   {
-    static bool save_raw = true;
-    static std::string file_prefix = "sampasrs";
-    static std::string fec_address = "10.0.0.2";
+    // Acquisition configs
+    static constexpr bool save_raw = true;
     static constexpr bool process_events = true;
-    static bool prefix_not_available = false;
+    static const std::string fec_address = "10.0.0.2";
+    static const auto event_handler = [&](Event&& event) { m_graphs.event_handle(std::move(event)); };
 
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4 {0.5, 0.5, 0.5, 1});
+    // Style constants
+    static const ImVec4 red {1, 0, 0, 1};
+    static const ImVec4 green {0, 0.5, 0, 1};
+    static const ImVec4 gray {0.5, 0.5, 0.5, 1};
+    static const ImVec2 start_button_size {80, 50};
+
+    // GUI state
+    static bool save_to_file = true;
+    static unsigned char acquisition_error = Acquisition::Stop;
+    static std::string file_prefix = "sampasrs";
+
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, gray);
     if (m_acquisition) {
-      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {1, 0, 0, 1});
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {1, 0, 0, 1});
-      if (ImGui::Button("Stop", ImVec2 {80, 50})) {
+      // Acquisition in progress
+      ImGui::PushStyleColor(ImGuiCol_Button, red);
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, red);
+
+      if (ImGui::Button("Stop", start_button_size)) {
+        // Stop if requested
         m_acquisition.reset();
         m_graphs.reset();
-      }
-      ImGui::SameLine();
-      if (save_raw) {
-        ImGui::Text("Writing to: %s-*.raw", file_prefix.data());
+        acquisition_error = Acquisition::Stop;
+        std::cout << "Acquisition stoped as requested\n";
       } else {
-        ImGui::Text("Writing to: %s-*.rawev", file_prefix.data());
-      }
-
-    } else {
-      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0, 0.5, 0, 1});
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0, 0.5, 0, 1});
-      if (ImGui::Button("Start", ImVec2 {80, 50})) {
-        try {
-          m_acquisition = std::make_unique<Acquisition>(
-              file_prefix,
-              save_raw,
-              [&](Event&& event) { m_graphs.event_handle(std::move(event)); },
-              fec_address);
-
-          prefix_not_available = false;
-        } catch (const std::runtime_error& e) {
-          prefix_not_available = true;
+        // Check for errors
+        acquisition_error = m_acquisition->get_state();
+        if (acquisition_error != Acquisition::Run) {
+          m_acquisition.reset();
+          m_graphs.reset();
+          std::cerr << "Acquisition stoped by error\n";
         }
       }
 
-      ImGui::SameLine();
-      ImGui::InputText("File prefix", &file_prefix);
-      ImGui::SameLine();
-      ImGui::Checkbox("Save raw data", &save_raw);
+      ImGui::PopStyleColor(3);
 
-      if (prefix_not_available) {
-        ImGui::TextColored(ImVec4 {1, 0, 0, 1}, "File prefix already in use");
+      ImGui::SameLine();
+      if (save_to_file) {
+        ImGui::Text("Writing to: %s-*.raw", file_prefix.data());
+      } else {
+        ImGui::TextColored(red, "Warning: not saving data to disk");
+      }
+
+    } else {
+      // Acquisition not started
+      ImGui::PushStyleColor(ImGuiCol_Button, green);
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, green);
+
+      if (ImGui::Button("Start", start_button_size)) {
+        if (save_to_file) {
+          m_acquisition = std::make_unique<Acquisition>(
+              file_prefix,
+              save_raw,
+              event_handler,
+              fec_address);
+        } else {
+          m_acquisition = std::make_unique<Acquisition>(
+              event_handler,
+              fec_address);
+        }
+      }
+      ImGui::PopStyleColor(3);
+
+      ImGui::SameLine();
+      ImGui::Checkbox("Save to file", &save_to_file);
+
+      if (save_to_file) {
+        ImGui::SameLine();
+        ImGui::InputText("File name", &file_prefix);
+        ImGui::SameLine();
+        file_dialog(file_prefix);
+      }
+
+      // Inform errors
+      if ((acquisition_error & Acquisition::ReadError) != 0) {
+        ImGui::TextColored(red, "Unable to read raw socket, try running as root");
+      } else if ((acquisition_error & Acquisition::WriteErrorFileExists) != 0) {
+        ImGui::TextColored(red, "File exists");
+      } else if ((acquisition_error & Acquisition::WriteErrorDirDontExists) != 0) {
+        ImGui::TextColored(red, "Directory don't exists");
+      } else if ((acquisition_error & Acquisition::WriteErrorOpenFile) != 0) {
+        ImGui::TextColored(red, "Unable to create output file");
       }
     }
-    ImGui::PopStyleColor(3);
+  }
+
+  static void file_dialog(std::string& file_name)
+  {
+    // open Dialog Simple
+    if (ImGui::Button("Browse...")) {
+      ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", "", ".");
+    }
+
+    // display
+    if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey")) {
+      // action if OK
+      if (ImGuiFileDialog::Instance()->IsOk()) {
+        file_name = ImGuiFileDialog::Instance()->GetFilePathName();
+      }
+
+      // close
+      ImGuiFileDialog::Instance()->Close();
+    }
   }
 
   void info()
@@ -251,10 +312,14 @@ class App {
       return;
     }
 
-    static float rratios[] = {1};
-    static float cratios[] = {1, 1, 1};
-    if (ImPlot::BeginSubplots("", 1, 3, ImVec2 {-1, -1},
-            ImPlotSubplotFlags_None, rratios, cratios)) {
+    if (ImGui::Button("Reset Graphs")) {
+      m_graphs.reset();
+    }
+
+    static std::array<float, 1> row_ratios = {1};
+    static std::array<float, 3> col_ratios = {1, 1, 1};
+    if (ImPlot::BeginSubplots("", row_ratios.size(), col_ratios.size(), {-1, -1},
+            ImPlotSubplotFlags_None, row_ratios.data(), col_ratios.data())) {
 
       static const int fit_flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
       if (ImPlot::BeginPlot("Energy Spectrum")) {

@@ -16,10 +16,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-option(SAMPA_BUILD_ACQUISITION ON "Build Acquisition")
-option(SAMPA_BUILD_GUI ON "Build Acquisition GUI")
-option(SAMPA_SANITIZERS OFF "Enable Address and UB sanitizers")
-option(SAMPA_NATIVE_OPTIMIZATION ON "Target native architecture if supported by the compiler")
+option(SAMPA_BUILD_ACQUISITION "Build Acquisition" ON)
+option(SAMPA_BUILD_GUI "Build Acquisition GUI" ON)
+option(SAMPA_SANITIZERS "Enable Address and UB sanitizers" OFF)
+option(SAMPA_NATIVE_OPTIMIZATION "Target native architecture if supported by the compiler" ON)
 
 if(SAMPA_NATIVE_OPTIMIZATION AND NOT MSVC)
     add_compile_options(-march=native)
@@ -102,9 +102,12 @@ if (SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
         ${implot_SOURCE_DIR}/implot_items.cpp
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
+        ${ImGuiFileDialog_SOURCES}
     )
-    target_include_directories(sampa_gui PRIVATE ${implot_SOURCE_DIR})
+    target_include_directories(sampa_gui PRIVATE ${implot_SOURCE_DIR} ${ImGuiFileDialog_SOURCE_DIR})
     target_link_libraries(sampa_gui PRIVATE sampasrs)
+    target_compile_definitions(sampa_gui PRIVATE USE_BOOKMARK)
+
 
     list(APPEND targets_to_install sampa_gui)
 endif()

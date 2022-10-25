@@ -44,6 +44,7 @@ if (SAMPA_BUILD_ACQUISITION)
         "LIBTINS_ENABLE_ACK_TRACKER OFF"
         "LIBTINS_ENABLE_TCP_STREAM_CUSTOM_DATA OFF"
         "LIBTINS_ENABLE_WPA2 OFF"
+        "LIBTINS_ENABLE_DOT11 OFF"
         "LIBTINS_BUILD_TESTS OFF"
         "LIBTINS_BUILD_EXAMPLES OFF"
         "LIBTINS_BUILD_SHARED OFF"
@@ -80,4 +81,9 @@ if(SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
     GITHUB_REPOSITORY epezent/implot
     VERSION 0.14
     )
+
+    CPMAddPackage("gh:aiekick/ImGuiFileDialog@0.6.4")
+    file(GLOB ImGuiFileDialog_SOURCES 
+		${ImGuiFileDialog_SOURCE_DIR}/*.cpp
+		${ImGuiFileDialog_SOURCE_DIR}/*.h)
 endif()
