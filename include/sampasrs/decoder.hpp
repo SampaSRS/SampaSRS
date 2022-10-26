@@ -437,9 +437,9 @@ struct Event {
   }
 };
 
-class EventSorter {
+class EventAssembler {
   public:
-  explicit EventSorter(const std::function<void(Event&&)>& event_handler)
+  explicit EventAssembler(const std::function<void(Event&&)>& event_handler)
       : m_event_handler(event_handler)
   {
   }

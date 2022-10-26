@@ -104,7 +104,7 @@ int main(int argc, const char* argv[])
     // }
   };
 
-  EventSorter sorter(save_event);
+  EventAssembler sorter(save_event);
   sorter.process_invalid_events = true;
   sorter.enable_remove_caca = true;
   sorter.enable_header_fix = false;

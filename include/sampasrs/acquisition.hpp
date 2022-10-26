@@ -368,7 +368,7 @@ class Acquisition {
     };
     Timer stats_timer(std::chrono::milliseconds(1000)); // Stats update interval
 
-    EventSorter sorter(event_handler);
+    EventAssembler sorter(event_handler);
     sorter.enable_header_fix = false;
     sorter.enable_remove_caca = true;
     sorter.process_invalid_events = true;
