@@ -1,55 +1,120 @@
-
-#include <sampasrs/root_fix.hpp>
-
-#include <cstddef>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <numeric>
-#include <string>
 #include <string_view>
 #include <vector>
+#include <unordered_map>
+#include <fstream>
 
-#include <TFile.h>
-#include <TTreeReader.h>
-#include <TTreeReaderArray.h>
+#include "TFile.h"
+#include "TCanvas.h"
+#include "TH1I.h"
+#include "TH1D.h"
+#include "TTreeReader.h"
+#include "TTreeReaderArray.h"
 
-int main(int argc, const char* argv[])
+
+void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std::pair<double, double>> &my_map)
 {
-  if (argc < 2) {
-    std::cerr << "Usage: sampa_decoder <input file.raw>\n";
-    return 1;
+    // Create an unordered_map of three values glchn(sampa*32+Chn)    
+    std::ifstream mapfile;
+    int glchn=0;
+    double baseline=0;
+    double sigma=0;
+    mapfile.open(pedestal_file);
+    while (true) 
+    { 
+      mapfile >> glchn;
+      mapfile >> baseline;
+      mapfile >> sigma;
+      my_map[glchn] = {baseline,sigma};
+      // std::cout << glchn << " " << baseline <<" "<<sigma<<std::endl;
+      if( mapfile.eof() ) 
+      {
+        break;
+      }
+    }
+    mapfile.close();
+}
+
+
+
+// int clustering(std::string pedestal_file, std::string_view file_name = "/home/geovaneg/Documents/Aquisicao-SampaSRS/Run60-0000.root")
+int main(int argc, char *argv[])
+{
+  if(argc != 3)
+  {
+    std::cout << "Usage =: ./clustering <pedestal_file.txt> <data_file.root>" << std::endl;
+    return 0;
   }
-  const char* input_name = argv[1];
 
-  auto input_path = std::filesystem::path(input_name);
-  bool read_raw = input_path.extension().string() == ".root";
-  auto rootfname = input_path.replace_extension("_Clst.root").string();
+  std::string pedestal_file = argv[1];
+  std::string file_name = argv[2];
+   
+ if (file_name.empty()) {
+    return 0; // just a precaution
+  }
 
-  size_t n_events = 0;
-  std::cout << "generating Clustered file: " << rootfname << "\n";
-  TFile out_file(rootfname.c_str(), "recreate");
 
-  TFile file(input_name, "READ");
+  std::unordered_map<int, std::pair<double, double>> map_of_pedestals = {};
+
+  Map_pedestal(pedestal_file, map_of_pedestals); // change the mapping on mapping.hpp for a diferent detector
+
+  int gl_chn=0;
+  int max_word=0;
+  int E_max=0;
+  int E_total=0;
+  double x_pos=0;
+
+  bool evt_ok=false;
+
+
+  TFile file(file_name.data(), "READ");
   TTreeReader reader("waveform", &file);
   TTreeReaderValue<std::vector<std::vector<short>>> words(reader, "words"); // template type must match datatype
   TTreeReaderArray<short> sampa(reader, "sampa");
   TTreeReaderArray<short> channel(reader, "channel");
-
-  int event_id = 0;
-  while (reader.Next() && event_id < 10) {
+  TTreeReaderArray<double> x(reader, "x");
+ 
+int event_id = 0;
+  while (reader.Next() && event_id<=1e4) {
     auto& event_words = *words;
-    long sum = 0;
     for (size_t i = 0; i < event_words.size(); ++i) {
-      std::cout << channel[i] << " " << sampa[i] << std::endl;
-      for (size_t j = 0; j < event_words[i].size(); ++j) {
-        sum += event_words[i][j];
+      // std::cout <<event_words.size()<<std::endl;
+      E_max=0;
+      std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
+      gl_chn = 32*(sampa[i]-8)+channel[i];
+      // for (size_t j = 2; j < event_words[i].size(); ++j) {
+      for (size_t j = 2; j < 25; ++j) { //pico está +- entre 0 e 25   
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+5*map_of_pedestals[gl_chn].second){
+          if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max){
+            E_max = event_words[i][j]-map_of_pedestals[gl_chn].first;
+            evt_ok=true;
+          }
+
+        }
+        
+      }
+      if(E_max>1 && E_max<1024){
+      x_pos = x_pos+(x[i]*E_max);
+      E_total = E_total+E_max;
       }
     }
-
-    std::cout << event_id << " " << sum << "\n";
+    if(evt_ok==true)
+    {
+      // h_pos->Fill(x_pos/E_total);
+      // h_energy->Fill(E_total);
+    }
+    evt_ok=false;
+    
+    x_pos=0;
+    E_total=0;
+   
     ++event_id;
-  }
+    if(event_id % 10000==0)
+    {
+      std::cout << event_id <<" events analyzed" <<std::endl;
 
-  return 0;
+    }
+    
+  } 
 }
