@@ -33,9 +33,11 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
     mapfile.close();
 }
 
+///VERIFICAR EVENTO 4936 SOMA ENERGIA ERRADA!!!!!//////////////////////////////
+
 void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
 {  
-  double pitch = 0.390625;
+  double pitch = 0.4;
   double x_pos=0;
   double E_total=0;
   int ClstID=0;
@@ -51,7 +53,8 @@ void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vec
     std::cout<<i<<" "<< hit[i].first<<" "<<hit[i].second.first<<" "<<hit[i].second.second<<std::endl;
     if( abs(hit.at(i).first-LastPosition)>pitch+0.1 )
     {
-      if( (NewCluster and hit.at(i).second.second==0) )
+      // if( (NewCluster and hit.at(i).second.second==0) )
+      if( (NewCluster) )
       {
         //adiciona, fecha o cluster e altera a Last Position
         // x_pos+=hit.at(i-1).first*hit.at(i-1).second.first;
@@ -66,17 +69,12 @@ void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vec
         x_pos=0;
         E_total=0;
       }
-      if(!NewCluster)
-      {
-        x_pos=0;
-        E_total=0;
-        LastPosition=hit.at(i).first;
-        LastEnergy=hit.at(i).second.first;
-      }
 
       if( !NewCluster and hit.at(i).second.second==1)
       {
         //começa novo cluster
+        x_pos=0;
+        E_total=0;
         NewCluster=true;
         x_pos+=hit.at(i).first*hit.at(i).second.first;
         E_total+=hit.at(i).second.first;
@@ -129,6 +127,8 @@ void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vec
     if( !NewCluster and hit.at(i).second.second==1)
     {
       //começa novo cluster
+      x_pos=0;
+      E_total=0;
       NewCluster=true;
       //adiciona last se a distancia for menor
       if( abs(hit.at(i).first-LastPosition)<pitch+0.1 )
@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
 
  
 int event_id = 0;
-  while (reader.Next() && event_id<1e3) 
+  while (reader.Next() && event_id<5e3) 
   {
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) 
