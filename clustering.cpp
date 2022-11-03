@@ -4,6 +4,8 @@
 #include <vector>
 #include <unordered_map>
 #include <fstream>
+#include <filesystem>
+
 
 #include "TFile.h"
 #include "TTreeReader.h"
@@ -34,8 +36,8 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
 }
 
 
-void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vector <double> &ClustPosX,
-std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
+void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vector <int> &ClustSize,
+std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
 
 {  
   double pitch = 0.390625; //pitch real = 0.390625
@@ -43,10 +45,10 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
   double E_total=0;
   int ClstID=0;
   int ClstSize=1;
-  std::cout<<0<<" "<< hit[0].first/pitch<<" "<<hit[0].second.first<<" "<<hit[0].second.second<<std::endl;
+  // std::cout<<0<<" "<< hit[0].first<<" "<<hit[0].second.first<<" "<<hit[0].second.second<<std::endl;
   
   bool NewCluster=hit.at(0).second.second;
-  double LastPosition=hit.at(0).first/pitch;
+  double LastPosition=hit.at(0).first;
   double LastEnergy=hit.at(0).second.first;
   
   x_pos+=LastPosition*LastEnergy;
@@ -54,27 +56,30 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
 
   for(int i=1; i<hit.size() ; i++ )
   {
-    std::cout<<i<<" "<< hit[i].first/pitch<<" "<<hit[i].second.first<<" "<<hit[i].second.second<<std::endl;
+    // std::cout<<i<<" "<< hit[i].first<<" "<<hit[i].second.first<<" "<<hit[i].second.second<<std::endl;
     //checa se existe um cluster em aberto
     // if(NewCluster)
     // {
       // std::cout <<"diff: "<<abs(hit[i].first/pitch-LastPosition) <<std::endl;
       //se a distancia atual é maior que um pitch da ultima distancia marcada
-      if(abs(hit[i].first/pitch-LastPosition)>1)
+      if(abs(hit[i].first-LastPosition)>pitch)
         {
           //fecha o cluster atual e guarda a distancia atual como a ultima
           // NewCluster=false;
           if(NewCluster)
           {
-            std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+            ClustSize.push_back(ClstSize);
+            ClustPosX.push_back(x_pos/E_total);
+            ClustEnergy.push_back(E_total);
+            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
           }
-          LastPosition=hit[i].first/pitch;
+          LastPosition=hit[i].first;
           LastEnergy=hit[i].second.first;
           ClstSize=1;
           x_pos=0;
           E_total=0;
           NewCluster=false;
-          x_pos+=hit[i].first/pitch*hit[i].second.first;
+          x_pos+=hit[i].first*hit[i].second.first;
           E_total+=hit[i].second.first;
           if(hit[i].second.second)
           {
@@ -87,9 +92,9 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
     else
     {
       // NewCluster=true;
-      x_pos+=hit[i].first/pitch*hit[i].second.first;
+      x_pos+=hit[i].first*hit[i].second.first;
       E_total+=hit[i].second.first;
-      LastPosition=hit[i].first/pitch;
+      LastPosition=hit[i].first;
       LastEnergy=hit[i].second.first;
       if(hit[i].second.second)
       {
@@ -102,13 +107,13 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
 
   }
   // std::cout<<"here4"<<std::endl;
-  if(abs(hit.back().first/pitch-LastPosition)>1)
+  if(abs(hit.back().first-LastPosition)>pitch)
         {
           //fecha o cluster atual e guarda a distancia atual como a ultima
           ClstSize=1;
           x_pos=0;
           E_total=0;
-          x_pos+=hit.back().first/pitch*hit.back().second.first;
+          x_pos+=hit.back().first*hit.back().second.first;
           E_total+=hit.back().second.first;
           if(hit.back().second.second)
           {
@@ -116,7 +121,10 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
           }
           if(NewCluster)
           {
-          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+            ClustSize.push_back(ClstSize);
+            ClustPosX.push_back(x_pos/E_total);
+            ClustEnergy.push_back(E_total);
+            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
           }
           NewCluster=false;
           // std::cout <<"here1"<<std::endl;
@@ -128,7 +136,10 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
         // E_total+=hit.back().second.first;
         if(NewCluster)
         {
-          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+          ClustSize.push_back(ClstSize);
+          ClustPosX.push_back(x_pos/E_total);
+          ClustEnergy.push_back(E_total);
+          // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl;  
         }
       }
 
@@ -154,6 +165,35 @@ int main(int argc, char *argv[])
     return 0; // just a precaution
   }
 
+  auto input_path = std::filesystem::path(file_name);
+  auto Clstrootfname = input_path.replace_extension("Clst.root").string();
+
+  TFile file(file_name.data(), "READ");
+  TTreeReader reader("waveform", &file);
+  TTreeReaderValue<std::vector<std::vector<short>>> words(reader, "words"); // template type must match datatype
+  TTreeReaderArray<short> sampa(reader, "sampa");
+  TTreeReaderArray<short> channel(reader, "channel");
+  TTreeReaderArray<double> x(reader, "x");
+
+
+  TFile* hfile = new TFile(Clstrootfname.c_str(),"RECREATE");
+    
+  std::cout << "Generating the Clustered file: " << Clstrootfname << std::endl;
+
+  TTree *MyTree = new TTree("evt","evt");
+
+
+  double E=0;
+  double xcm=0;
+  int ClstSize=0;
+  int ClstID=0;
+
+  MyTree->Branch("ClstID",&ClstID,"ClstID/I");
+  MyTree->Branch("ClstSize",&ClstSize,"ClstSize/I");
+  MyTree->Branch("xcm",&xcm,"xcm/D");
+  MyTree->Branch("E",&E,"E/D");
+
+
   std::unordered_map<int, std::pair<double, double>> map_of_pedestals = {};
 
   Map_pedestal(pedestal_file, map_of_pedestals); // change the mapping on mapping.hpp for a diferent detector
@@ -164,7 +204,7 @@ int main(int argc, char *argv[])
   int E_int=0;
   int T_max=0;
 
-  std::vector <double> ClstSize ={};
+  std::vector <int> CSize ={};
   std::vector <double> ClstPosX ={};
   std::vector <double> ClstEnergy ={};
 
@@ -173,18 +213,9 @@ int main(int argc, char *argv[])
   std::vector <std::pair <double, std::pair<int, int>>> hit ={};
 
   bool evt_ok=false;
-
-
-  TFile file(file_name.data(), "READ");
-  TTreeReader reader("waveform", &file);
-  TTreeReaderValue<std::vector<std::vector<short>>> words(reader, "words"); // template type must match datatype
-  TTreeReaderArray<short> sampa(reader, "sampa");
-  TTreeReaderArray<short> channel(reader, "channel");
-  TTreeReaderArray<double> x(reader, "x");
-
  
 int event_id = 0;
-  while (reader.Next() && event_id<5e3) 
+  while (reader.Next() && event_id<1e6) 
   {
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) 
@@ -197,7 +228,7 @@ int event_id = 0;
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < 25; ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+2*map_of_pedestals[gl_chn].second)
         { //first threshold
           // E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
           if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
@@ -223,19 +254,24 @@ int event_id = 0;
     // if(evt_ok==true)
     // {
 
-    std::cout << event_id <<std::endl;
+    // std::cout << event_id <<std::endl;
     if(!hit.empty())
     {
-      Make_Cluster(hit, ClstSize, ClstPosX, ClstEnergy);
+      Make_Cluster(hit, CSize, ClstPosX, ClstEnergy);
     }
 
-    // for(int j = 0; j<ClustPosX.size(); j++)
-    // {
-    //   std::cout <<"------"<< ClustPosX.at(j) << " "<< ClustEnergy.at(j)<<std::endl;
-    // }
-    //Fazer o fill da nova TTree----------------------------------------
+    for(int j = 0; j<ClstPosX.size(); j++)
+    {
+      ClstID = j;
+      ClstSize = CSize.at(j);
+      xcm = ClstPosX.at(j);
+      E = ClstEnergy.at(j);
+      // std::cout << ClstID <<" "<<ClstSize<<" "<<xcm<<" "<<E<<std::endl;
+      MyTree->Fill();
+    }
 
-    ClstSize.clear();
+
+    CSize.clear();
     ClstEnergy.clear();
     ClstPosX.clear();
     hit.clear();
@@ -251,6 +287,8 @@ int event_id = 0;
     }
   } 
     //Escrever a nova TTree-----------------------------------------------
+    MyTree->Write();
+    delete hfile;
 
     time(&end);
     double time_taken = double(end - start);
