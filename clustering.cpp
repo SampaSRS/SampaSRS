@@ -33,127 +33,85 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
     mapfile.close();
 }
 
-///VERIFICAR EVENTO 4936 SOMA ENERGIA ERRADA!!!!!//////////////////////////////
 
-void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
+void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vector <double> &ClustPosX,
+std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
+
 {  
-  double pitch = 0.4;
+  double pitch = 0.390625; //pitch real = 0.390625
   double x_pos=0;
   double E_total=0;
   int ClstID=0;
-  bool NewCluster=false;
+  int ClstSize=1;
+   std::cout<<0<<" "<< hit[0].first/pitch<<" "<<hit[0].second.first<<std::endl;
 
 
-  double LastPosition=0;
-  double LastEnergy=0;
+  bool NewCluster=true;
+  double LastPosition=hit.at(0).first/pitch;
+  double LastEnergy=hit.at(0).second.first;
+  
+  x_pos+=LastPosition*LastEnergy;
+  E_total+= LastEnergy;
 
-
-  for(int i=0; i<hit.size() ; i++ )
+  for(int i=1; i<hit.size() ; i++ )
   {
-    std::cout<<i<<" "<< hit[i].first<<" "<<hit[i].second.first<<" "<<hit[i].second.second<<std::endl;
-    if( abs(hit.at(i).first-LastPosition)>pitch+0.1 )
+    std::cout<<i<<" "<< hit[i].first/pitch<<" "<<hit[i].second.first<<std::endl;
+    //checa se existe um cluster em aberto
+    // if(NewCluster)
+    // {
+      // std::cout <<"diff: "<<abs(hit[i].first/pitch-LastPosition) <<std::endl;
+      //se a distancia atual é maior que um pitch da ultima distancia marcada
+      if(abs(hit[i].first/pitch-LastPosition)>1)
+        {
+          //fecha o cluster atual e guarda a distancia atual como a ultima
+          // NewCluster=false;
+          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+          LastPosition=hit[i].first/pitch;
+          LastEnergy=hit[i].second.first;
+          ClstSize=1;
+          x_pos=0;
+          E_total=0;
+          x_pos+=hit[i].first/pitch*hit[i].second.first;
+          E_total+=hit[i].second.first;
+          ClstID++;
+          // std::cout <<"here1"<<std::endl;
+        }
+
+    else
     {
-      // if( (NewCluster and hit.at(i).second.second==0) )
-      if( (NewCluster) )
+      // NewCluster=true;
+      x_pos+=hit[i].first/pitch*hit[i].second.first;
+      E_total+=hit[i].second.first;
+      LastPosition=hit[i].first/pitch;
+      LastEnergy=hit[i].second.first;
+      ClstSize++;
+      // std::cout <<"here3"<<std::endl;
+    }
+    
+
+  }
+  // std::cout<<"here4"<<std::endl;
+  if(abs(hit.back().first/pitch-LastPosition)>1)
+        {
+          //fecha o cluster atual e guarda a distancia atual como a ultima
+          ClstSize=1;
+          x_pos=0;
+          E_total=0;
+          x_pos+=hit.back().first/pitch*hit.back().second.first;
+          E_total+=hit.back().second.first;
+          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+          // std::cout <<"here1"<<std::endl;
+        }
+      //se a distancia atual é menor que um pitch da ultima distancia marcada
+      else 
       {
-        //adiciona, fecha o cluster e altera a Last Position
-        // x_pos+=hit.at(i-1).first*hit.at(i-1).second.first;
-        // E_total+=hit.at(i-1).second.first;
-        NewCluster=false;
-        std::cout<<i<<" "<<"ClstID+++: "<<ClstID<<" "<<x_pos/E_total<<"  "<<E_total<<std::endl;
-        ClustPosX.push_back(x_pos/E_total);
-        ClustEnergy.push_back(E_total);
-        ClstID++;
-        LastPosition=hit.at(i).first; //cluster splitting
-        LastEnergy=hit.at(i).second.first;
-        x_pos=0;
-        E_total=0;
+        // x_pos+=hit.back().first/pitch*hit.back().second.first;
+        // E_total+=hit.back().second.first;
+        std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
       }
 
-      if( !NewCluster and hit.at(i).second.second==1)
-      {
-        //começa novo cluster
-        x_pos=0;
-        E_total=0;
-        NewCluster=true;
-        x_pos+=hit.at(i).first*hit.at(i).second.first;
-        E_total+=hit.at(i).second.first;
-        LastPosition=hit.at(i).first; //cluster splitting
-        LastEnergy=hit.at(i).second.first;
-      }      
-    }
 
-    if( NewCluster and hit.at(i).second.second==0)
-    {
-        x_pos+=hit.at(i).first*hit.at(i).second.first;
-        E_total+=hit.at(i).second.first;
-        NewCluster=false;
-        std::cout<<i<<" "<<"ClstID---: "<<ClstID<<" "<<x_pos/E_total<<"  "<<E_total<<std::endl;
-        ClustPosX.push_back(x_pos/E_total);
-        ClustEnergy.push_back(E_total);
-        ClstID++;
-        LastPosition=hit.at(i).first; //cluster splitting
-        LastEnergy=hit.at(i).second.first;
-        x_pos=0;
-        E_total=0;
-    }
-
-    if( (NewCluster and hit.at(i).second.second==1) )
-    {
-      //adiciona ao cluster existente
-      if( abs(hit.at(i).first-LastPosition)>pitch+0.1 )
-      {
-        NewCluster=false;
-        std::cout<<"ClstID: "<<ClstID<<" "<<x_pos/E_total<<"  "<<E_total<<std::endl;
-        ClustPosX.push_back(x_pos/E_total);
-        ClustEnergy.push_back(E_total);
-        ClstID++;
-        LastPosition=hit.at(i).first; //cluster splitting
-        LastEnergy=hit.at(i).second.first;
-        x_pos=0;
-        E_total=0;
-      }
-      else
-      {
-      x_pos+=hit.at(i).first*hit.at(i).second.first;
-      E_total+=hit.at(i).second.first;
-      LastPosition=hit.at(i).first; //cluster splitting
-      LastEnergy=hit.at(i).second.first;
-      }  
-
-
-    }
-
-    if( !NewCluster and hit.at(i).second.second==1)
-    {
-      //começa novo cluster
-      x_pos=0;
-      E_total=0;
-      NewCluster=true;
-      //adiciona last se a distancia for menor
-      if( abs(hit.at(i).first-LastPosition)<pitch+0.1 )
-      {
-        x_pos+=LastPosition*LastEnergy;
-        E_total+=LastEnergy; 
-      }
-      x_pos+=hit.at(i).first*hit.at(i).second.first;
-      E_total+=hit.at(i).second.first;
-      LastPosition=hit.at(i).first;
-      LastEnergy=hit.at(i).second.first;
-      
-    }
-
-    if( !NewCluster and hit.at(i).second.second==0)
-    {
-        LastPosition=hit.at(i).first;
-        LastEnergy=hit.at(i).second.first;
-    }
-
-  }   
-}  
-
-
-
+}
 
 int main(int argc, char *argv[])
 {
@@ -182,12 +140,12 @@ int main(int argc, char *argv[])
   int gl_chn=0;
   int max_word=0;
   int E_max=0;
-  int E_total=0;
   int E_int=0;
   int T_max=0;
-  double x_pos=0;
-  std::vector <double> ClustPosX ={};
-  std::vector <double> ClustEnergy ={};
+
+  std::vector <double> ClstSize ={};
+  std::vector <double> ClstPosX ={};
+  std::vector <double> ClstEnergy ={};
 
   
 
@@ -226,7 +184,7 @@ int event_id = 0;
             E_max = event_words[i][j]-map_of_pedestals[gl_chn].first;
             T_max = j;
             if(event_words[i][j] > map_of_pedestals[gl_chn].first+5*map_of_pedestals[gl_chn].second)
-            { //validation threshold
+            { //validation threshold not yet implemented in the clustering
               evt_ok=true;
             }
           }
@@ -245,7 +203,10 @@ int event_id = 0;
     // {
 
     std::cout << event_id <<std::endl;
-    Make_Cluster(hit, ClustPosX, ClustEnergy);
+    if(!hit.empty())
+    {
+      Make_Cluster(hit, ClstSize, ClstPosX, ClstEnergy);
+    }
 
     // for(int j = 0; j<ClustPosX.size(); j++)
     // {
@@ -253,15 +214,13 @@ int event_id = 0;
     // }
     //Fazer o fill da nova TTree----------------------------------------
 
-    ClustEnergy.clear();
-    ClustPosX.clear();
-    
-
+    ClstSize.clear();
+    ClstEnergy.clear();
+    ClstPosX.clear();
     hit.clear();
+    
     evt_ok=false;
     
-    x_pos = 0;
-    E_total = 0;
     E_int = 0;
     ++event_id;
     if(event_id % 10000==0)
