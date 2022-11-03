@@ -43,10 +43,9 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
   double E_total=0;
   int ClstID=0;
   int ClstSize=1;
-   std::cout<<0<<" "<< hit[0].first/pitch<<" "<<hit[0].second.first<<std::endl;
-
-
-  bool NewCluster=true;
+  std::cout<<0<<" "<< hit[0].first/pitch<<" "<<hit[0].second.first<<" "<<hit[0].second.second<<std::endl;
+  
+  bool NewCluster=hit.at(0).second.second;
   double LastPosition=hit.at(0).first/pitch;
   double LastEnergy=hit.at(0).second.first;
   
@@ -55,7 +54,7 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
 
   for(int i=1; i<hit.size() ; i++ )
   {
-    std::cout<<i<<" "<< hit[i].first/pitch<<" "<<hit[i].second.first<<std::endl;
+    std::cout<<i<<" "<< hit[i].first/pitch<<" "<<hit[i].second.first<<" "<<hit[i].second.second<<std::endl;
     //checa se existe um cluster em aberto
     // if(NewCluster)
     // {
@@ -65,14 +64,22 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
         {
           //fecha o cluster atual e guarda a distancia atual como a ultima
           // NewCluster=false;
-          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+          if(NewCluster)
+          {
+            std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+          }
           LastPosition=hit[i].first/pitch;
           LastEnergy=hit[i].second.first;
           ClstSize=1;
           x_pos=0;
           E_total=0;
+          NewCluster=false;
           x_pos+=hit[i].first/pitch*hit[i].second.first;
           E_total+=hit[i].second.first;
+          if(hit[i].second.second)
+          {
+            NewCluster=true;
+          }
           ClstID++;
           // std::cout <<"here1"<<std::endl;
         }
@@ -84,6 +91,10 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
       E_total+=hit[i].second.first;
       LastPosition=hit[i].first/pitch;
       LastEnergy=hit[i].second.first;
+      if(hit[i].second.second)
+      {
+        NewCluster=true;
+      }
       ClstSize++;
       // std::cout <<"here3"<<std::endl;
     }
@@ -99,7 +110,15 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
           E_total=0;
           x_pos+=hit.back().first/pitch*hit.back().second.first;
           E_total+=hit.back().second.first;
+          if(hit.back().second.second)
+          {
+            NewCluster=true;
+          }
+          if(NewCluster)
+          {
           std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+          }
+          NewCluster=false;
           // std::cout <<"here1"<<std::endl;
         }
       //se a distancia atual é menor que um pitch da ultima distancia marcada
@@ -107,9 +126,11 @@ std::vector <double> &ClustSize,std::vector <double> &ClustEnergy)
       {
         // x_pos+=hit.back().first/pitch*hit.back().second.first;
         // E_total+=hit.back().second.first;
-        std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+        if(NewCluster)
+        {
+          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " <<x_pos/E_total << " " << E_total << std::endl; 
+        }
       }
-
 
 }
 
@@ -176,7 +197,7 @@ int event_id = 0;
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < 25; ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+2*map_of_pedestals[gl_chn].second)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
         { //first threshold
           // E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
           if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
