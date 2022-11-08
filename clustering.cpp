@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
   TTreeReaderArray<short> sampa(reader, "sampa");
   TTreeReaderArray<short> channel(reader, "channel");
   TTreeReaderArray<double> x(reader, "x");
-
+  
 
   TFile* hfile = new TFile(Clstrootfname.c_str(),"RECREATE");
     
@@ -187,7 +187,10 @@ int main(int argc, char *argv[])
   double xcm=0;
   int ClstSize=0;
   int ClstID=0;
+  unsigned int trgID=0;
 
+
+  MyTree->Branch("trgID",&trgID,"trgID/i");
   MyTree->Branch("ClstID",&ClstID,"ClstID/I");
   MyTree->Branch("ClstSize",&ClstSize,"ClstSize/I");
   MyTree->Branch("xcm",&xcm,"xcm/D");
@@ -215,7 +218,7 @@ int main(int argc, char *argv[])
   bool evt_ok=false;
  
 int event_id = 0;
-  while (reader.Next() && event_id<1e6) 
+  while (reader.Next()) 
   {
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) 
@@ -228,7 +231,7 @@ int event_id = 0;
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < 25; ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+2*map_of_pedestals[gl_chn].second)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
         { //first threshold
           // E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
           if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
@@ -263,6 +266,7 @@ int event_id = 0;
     for(int j = 0; j<ClstPosX.size(); j++)
     {
       ClstID = j;
+      trgID = event_id;
       ClstSize = CSize.at(j);
       xcm = ClstPosX.at(j);
       E = ClstEnergy.at(j);
@@ -270,7 +274,7 @@ int event_id = 0;
       MyTree->Fill();
     }
 
-
+    
     CSize.clear();
     ClstEnergy.clear();
     ClstPosX.clear();
