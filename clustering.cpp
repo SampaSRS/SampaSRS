@@ -25,7 +25,14 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
       mapfile >> glchn;
       mapfile >> baseline;
       mapfile >> sigma;
-      my_map[glchn] = {baseline,sigma};
+      if(sigma==0)
+      {
+        my_map[glchn] = {baseline,1000}; //canais vem com baseline com todos valores igual sigma==0/ matar esse canal
+      }
+      else
+      {
+        my_map[glchn] = {baseline,sigma};
+      }
       // std::cout << glchn << " " << baseline <<" "<<sigma<<std::endl;
       if( mapfile.eof() ) 
       {
@@ -229,7 +236,7 @@ int event_id = 0;
       // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
-      for (size_t j = 2; j < 25; ++j) 
+      for (size_t j = 2; j < 30; ++j) 
       { //pico está +- entre 0 e 25   
         if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
         { //first threshold

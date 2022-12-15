@@ -66,12 +66,13 @@ int main(int argc, const char* argv[])
   std::cout << "Generating pedestal file: " << rootfname << "\n";
   std::ofstream TxtOutFile(rootfname);
 
-  TxtOutFile << "sampa channel global_channel mean std\n";
+  // TxtOutFile << "sampa channel global_channel mean std\n";
 
   for (auto& [global_channel, pedestal] : channels) {
     const double mean = pedestal.sum / static_cast<double>(pedestal.count);
     const double var = pedestal.sum_squared / static_cast<double>(pedestal.count) - std::pow(mean, 2);
-    TxtOutFile << pedestal.sampa << " " << pedestal.channel << " " << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
+    TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
+    // TxtOutFile << pedestal.sampa << " " << pedestal.channel << " " << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
   }
 
   TxtOutFile.close();

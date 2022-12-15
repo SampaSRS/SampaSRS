@@ -362,7 +362,7 @@ int main(int /*unused*/, char* /*unused*/[])
 {
   App app {};
   auto* implotContext = ImPlot::CreateContext();
-  HelloImGui::Run([&app]() { app.run(); }, {1000.f, 600.f}, "SampaSRS");
+  HelloImGui::Run([&app]() { app.run(); }, "SampaSRS",true);
   ImPlot::DestroyContext(implotContext);
   return 0;
 }
