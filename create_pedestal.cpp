@@ -37,7 +37,7 @@ void make_plot(const char *filename)
 
     std::ifstream infile;
     infile.open (filename);
-    std::cout<< " Producing pedestal plot" <<std::endl ;
+    std::cout<< "Producing pedestal plot" <<std::endl ;
 
     const char* input_name = filename;
     auto input_path = std::filesystem::path(input_name);
@@ -54,7 +54,7 @@ void make_plot(const char *filename)
     meanHist2->Fill(mean);
     sigmaHist2->Fill(sigma);
     
-     std::cout << bin << " " << mean << " " <<sigma << std::endl;  
+    //  std::cout << bin << " " << mean << " " <<sigma << std::endl;  
     }
 
     infile.close();
@@ -66,18 +66,19 @@ void make_plot(const char *filename)
     meany=meanHist2->GetMean();
     sigmay=meanHist2->GetRMS();
     meanHist->SetTitle("Baseline; Channel; Mean value (ADC channels)");
+
+    std::cout<<"Baseline mean: "<< meany <<"/baseline standard deviation: "<<sigmay<<" "<<std::endl;
     
+    // TLatex latex;   
+    // latex.SetTextSize(0.05);
+    // latex.SetTextAlign(13);  //align at top
+    // latex.SetTextFont(12);
 
-    TLatex latex;   
-    latex.SetTextSize(0.05);
-    latex.SetTextAlign(13);  //align at top
-    latex.SetTextFont(12);
-
-    char* buf = new char[100];
-	  sprintf(buf,"Mean = %4.1f", meany);
-    latex.DrawLatex(61,150,buf); //Escreve sigma na imagem
-    sprintf(buf,"#sigma = %4.1f", sigmay);
-    latex.DrawLatex(61,140,buf); //Escreve sigma na imagem
+    // char* buf = new char[100];
+	  // sprintf(buf,"Mean = %4.1f", meany);
+    // latex.DrawLatex(61,150,buf); //Escreve sigma na imagem
+    // sprintf(buf,"#sigma = %4.1f", sigmay);
+    // latex.DrawLatex(61,140,buf); //Escreve sigma na imagem
 
     c1->cd(2);
     sigmaHist->Draw();
@@ -85,13 +86,15 @@ void make_plot(const char *filename)
     meany=sigmaHist2->GetMean();
     sigmay=sigmaHist2->GetRMS();
 
+    std::cout<<"Noise mean: "<< meany <<"/Noise standard deviation: "<<sigmay<<" "<<std::endl;
     
-    latex.SetTextSize(0.05);
-    latex.SetTextAlign(13);  //align at top
-    sprintf(buf,"Mean = %4.1f",meany);
-    latex.DrawLatex(60,14,buf); //Escreve sigma na imagem
-    sprintf(buf,"#sigma = %4.1f",sigmay);
-    latex.DrawLatex(60,13,buf); //Escreve sigma na imagem
+    // latex.SetTextSize(0.05);
+    // latex.SetTextAlign(13);  //align at top
+    // sprintf(buf,"Mean = %4.1f",meany);
+    // latex.DrawLatex(60,14,buf); //Escreve sigma na imagem
+    // sprintf(buf,"#sigma = %4.1f",sigmay);
+    // latex.DrawLatex(60,13,buf); //Escreve sigma na imagem
+
     c1->SaveAs(imgfname.c_str());
 
     }
