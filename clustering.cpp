@@ -33,13 +33,17 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
       {
         my_map[glchn] = {baseline,sigma};
       }
-      // std::cout << glchn << " " << baseline <<" "<<sigma<<std::endl;
+      // std::cout << glchn << " " << my_map[glchn].first <<" "<<my_map[glchn].second<<std::endl;
+      
+
       if( mapfile.eof() ) 
       {
         break;
       }
     }
     mapfile.close();
+  
+    // for(int k=0;k<my_map.size();k++) {std::cout << my_map[k].first<<" "<<my_map[k].second <<std::endl;}
 }
 
 
@@ -238,14 +242,14 @@ int event_id = 0;
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < 30; ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second)
         { //first threshold
           // E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
           if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
           {
             E_max = event_words[i][j]-map_of_pedestals[gl_chn].first;
             T_max = j;
-            if(event_words[i][j] > map_of_pedestals[gl_chn].first+5*map_of_pedestals[gl_chn].second)
+            if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second)
             { //validation threshold not yet implemented in the clustering
               evt_ok=true;
             }
@@ -253,6 +257,7 @@ int event_id = 0;
 
         }
         
+
       }
       if(E_max>1 && E_max<1024){ //checking values and filling vectors
       // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;

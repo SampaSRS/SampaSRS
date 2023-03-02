@@ -9,8 +9,95 @@
 #include <vector>
 
 #include <TFile.h>
+#include <TCanvas.h>
+#include <TLatex.h>
+#include <TStyle.h>
+#include <TH1D.h>
 #include <TTreeReader.h>
 #include <TTreeReaderArray.h>
+
+void make_plot(const char *filename)
+    {    
+    
+    gStyle->SetOptStat(0);    //Printa os parametros do fit no gráfico
+    gStyle->SetTitleFont(132, "xyz");
+    gStyle->SetTitleFont(132, " ");
+    gStyle->SetLabelFont(132, "xyz");
+
+    int bin;   
+    double mean=0;
+    double sigma=0;
+    double meany;
+    double sigmay;
+    TH1D* meanHist =new TH1D("Mean", "Mean", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* sigmaHist =new TH1D("Sigma", "Sigma", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+
+    TH1D* meanHist2 =new TH1D("Mean2", "Mean2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* sigmaHist2 =new TH1D("Sigma2", "Sigma2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+
+    std::ifstream infile;
+    infile.open (filename);
+    std::cout<< " Producing pedestal plot" <<std::endl ;
+
+    const char* input_name = filename;
+    auto input_path = std::filesystem::path(input_name);
+    auto imgfname = input_path.replace_extension(".png").string();
+
+    while(!infile.eof())
+	{
+    infile>>bin;
+    infile>>mean;
+    infile>>sigma;
+    meanHist->SetBinContent(bin+1,mean);
+    sigmaHist->SetBinContent(bin+1,sigma);
+
+    meanHist2->Fill(mean);
+    sigmaHist2->Fill(sigma);
+    
+     std::cout << bin << " " << mean << " " <<sigma << std::endl;  
+    }
+
+    infile.close();
+
+    TCanvas *c1 = new TCanvas("c1","c1",1600, 800);
+    c1->Divide(2,1);
+    c1->cd(1);
+    meanHist->Draw();
+    meany=meanHist2->GetMean();
+    sigmay=meanHist2->GetRMS();
+    meanHist->SetTitle("Baseline; Channel; Mean value (ADC channels)");
+    
+
+    TLatex latex;   
+    latex.SetTextSize(0.05);
+    latex.SetTextAlign(13);  //align at top
+    latex.SetTextFont(12);
+
+    char* buf = new char[100];
+	  sprintf(buf,"Mean = %4.1f", meany);
+    latex.DrawLatex(61,150,buf); //Escreve sigma na imagem
+    sprintf(buf,"#sigma = %4.1f", sigmay);
+    latex.DrawLatex(61,140,buf); //Escreve sigma na imagem
+
+    c1->cd(2);
+    sigmaHist->Draw();
+    sigmaHist->SetTitle("Noise; Channel; Std value (ADC channels)");
+    meany=sigmaHist2->GetMean();
+    sigmay=sigmaHist2->GetRMS();
+
+    
+    latex.SetTextSize(0.05);
+    latex.SetTextAlign(13);  //align at top
+    sprintf(buf,"Mean = %4.1f",meany);
+    latex.DrawLatex(60,14,buf); //Escreve sigma na imagem
+    sprintf(buf,"#sigma = %4.1f",sigmay);
+    latex.DrawLatex(60,13,buf); //Escreve sigma na imagem
+    c1->SaveAs(imgfname.c_str());
+
+    }
+
+
+
 
 int main(int argc, const char* argv[])
 {
@@ -18,10 +105,11 @@ int main(int argc, const char* argv[])
     std::cerr << "Usage: create_pedestal <Pedestal_file.root>\n";
     return 1;
   }
+  bool PlotPedestal=true;
   const char* input_name = argv[1];
 
   auto input_path = std::filesystem::path(input_name);
-  auto rootfname = input_path.replace_extension("PedFile.txt").string();
+  auto rootfname = input_path.replace_extension(".txt").string();
 
   TFile file(input_name, "READ");
   TTreeReader reader("waveform", &file);
@@ -39,7 +127,7 @@ int main(int argc, const char* argv[])
 
   std::map<int, Pedestal> channels {};
 
-  int const NumEvts = 10; // Number of events for pedestal file
+  int const NumEvts = 500; // Number of events for pedestal file
 
   int event_id = 0;
   while (reader.Next() && event_id < NumEvts) {
@@ -76,5 +164,9 @@ int main(int argc, const char* argv[])
   }
 
   TxtOutFile.close();
+  if(PlotPedestal)
+  {
+    make_plot(rootfname.c_str());
+  }
   return 0;
 }
