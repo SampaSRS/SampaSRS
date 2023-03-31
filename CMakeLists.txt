@@ -69,6 +69,7 @@ if (ROOT_FOUND)
 
     add_executable(sampa_decoder sampa_decoder.cpp)
     add_executable(clustering clustering.cpp)
+    add_executable(common_mode common_mode.cpp)
     add_executable(create_pedestal create_pedestal.cpp)
     
     add_library(sampa_root SHARED)
@@ -78,9 +79,10 @@ if (ROOT_FOUND)
     
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
     target_link_libraries(clustering PRIVATE sampasrs sampa_root)
+    target_link_libraries(common_mode PRIVATE sampasrs sampa_root)
     target_link_libraries(create_pedestal PRIVATE sampasrs sampa_root)
 
-    list(APPEND targets_to_install sampa_decoder clustering create_pedestal sampa_root)
+    list(APPEND targets_to_install sampa_decoder clustering common_mode create_pedestal sampa_root)
 else()
     message(WARNING "ROOT not found, sampa_decoder won't be compiled")
 endif()
