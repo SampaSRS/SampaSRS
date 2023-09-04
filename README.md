@@ -58,4 +58,4 @@ The file _config.txt_ contains the different I2C commands to configure each SAMP
 
 ## Processing data
 
-The data processing chain starts with `sampa_decoder`.
+The data processing chain starts with `sampa_decoder`. Use it to process _.raw_ files into _.root_ TTres. To create the pedestal files for non-zero suppression runs (this is the only feature available at the moment - zero suppression runs under construction :hammer_and_wrench:) 
