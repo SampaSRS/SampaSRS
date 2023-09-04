@@ -41,6 +41,7 @@ The `SAMPA_BUILD_ACQUISITION` flag will disable all acquisition-related code, in
 
 ### Running on Linux
 
+[!IMPORTANT]
 The executables `sampa_acquisition` and `sampa_gui` needs special permissions to read raw network sockets. You can run those as root with `sudo` or you can give them the permission to run as a normal user with:
 
     sudo setcap cap_net_raw=pe sampa_acquisition
@@ -52,6 +53,8 @@ To start a acquisition first configure the system using `sampa_control`. After t
 
     ./sampa_control config.txt
     sudo ./sampa_gui
+
+The file _config.txt_ contains the different I2C commands to configure each SAMPA. An example is provided but different applications will have different configuration files. The complete list of commands and addresses can also be found at `include/sampasrs/slow_control.hpp` 
 
 ## Processing data
 
