@@ -58,4 +58,12 @@ The file _config.txt_ contains the different I2C commands to configure each SAMP
 
 ## Processing data
 
-The data processing chain starts with `sampa_decoder`. Use it to process _.raw_ files into _.root_ TTres. To create the pedestal files for non-zero suppression runs (this is the only feature available at the moment - zero suppression runs under construction :hammer_and_wrench:) 
+The data processing chain starts with `sampa_decoder`. Use it to process _.raw_ files into _.root_ TTres. To create the pedestal files for non-zero suppression runs (this is the only feature available at the moment - zero suppression runs under construction :hammer_and_wrench:) run the following command:
+
+    ./sampa_decoder pedestal_file.raw
+
+You will find that along with a text file containing the pedestal information, a graph and a small calculation to check integrity was made. 
+
+To process the data produced by the detector first decode the acquisition file with `sampa_decoder`. To generate the clusters and reconstruct events execute `clustering`
+
+    ./clustering <pedestal_file.txt> <data_file.root>
