@@ -39,9 +39,20 @@ It's possible to build only the reconstruction code to be able to run in a clust
 
 The `SAMPA_BUILD_ACQUISITION` flag will disable all acquisition-related code, including the GUI. If the code needs to run on a different machine than the one it was compiled you probably should also disable the native optimizations, setting `SAMPA_NATIVE_OPTIMIZATION` to off. This will ensure the code is compatible with multiple processor architectures, with some performance cost.
 
-## Running on Linux
+### Running on Linux
 
 The executables `sampa_acquisition` and `sampa_gui` needs special permissions to read raw network sockets. You can run those as root with `sudo` or you can give them the permission to run as a normal user with:
 
     sudo setcap cap_net_raw=pe sampa_acquisition
     sudo setcap cap_net_raw=pe sampa_gui
+
+## Running the acquisition
+
+To start a acquisition first configure the system using `sampa_control`. After that, execute `sampa_gui`. You can choose to save the file or not. 
+
+    ./sampa_control config.txt
+    sudo ./sampa_gui
+
+## Processing data
+
+The data processing chain starts with `sampa_decoder`.
