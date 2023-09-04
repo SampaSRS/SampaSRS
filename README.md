@@ -41,8 +41,8 @@ The `SAMPA_BUILD_ACQUISITION` flag will disable all acquisition-related code, in
 
 ### Running on Linux
 
-[!IMPORTANT]
-The executables `sampa_acquisition` and `sampa_gui` needs special permissions to read raw network sockets. You can run those as root with `sudo` or you can give them the permission to run as a normal user with:
+>[!IMPORTANT]
+>The executables `sampa_acquisition` and `sampa_gui` needs special permissions to read raw network sockets. You can run those as root with `sudo` or you can give them the permission to run as a normal user with:
 
     sudo setcap cap_net_raw=pe sampa_acquisition
     sudo setcap cap_net_raw=pe sampa_gui
