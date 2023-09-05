@@ -445,7 +445,7 @@ namespace commands {
 
   struct ZeroSuppression : Command {
     explicit ZeroSuppression()
-        : Command("Set the same zero suppression threshold for all channels")
+        : Command("Broadcast the same zero suppression threshold for all channels")
     {
     }
 
@@ -461,6 +461,27 @@ namespace commands {
       return {channel_write(-1, -1, ChannelRegister::ZSTHR, val)};
     }
   };
+
+  struct SetZeroSuppression : Command {
+    explicit SetZeroSuppression()
+        : Command("Set the zero suppression threshold for each channels")
+    {
+    }
+
+    Requests make(const std::vector<uint32_t>& args) const override
+    {
+      if (args.size() != 3) {
+        throw std::invalid_argument("Expects 3 arguments");
+      }
+      char sampa = (char) args[0];
+      char channel = (char)args[1];
+      // Zero suppression uses 2 bit resolution
+      auto val = args[2] << 2u;
+
+      return {channel_write(sampa, channel, ChannelRegister::ZSTHR, val)};
+    }
+  };
+
 
   struct PedestalCliff : Command {
     explicit PedestalCliff()
@@ -502,20 +523,21 @@ get_commands()
   CommandList commands {};
 
   // clang-format off
-  commands["start"]            = std::make_unique<FixCommand>(6600, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000001});
-  commands["stop"]             = std::make_unique<FixCommand>(6600, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000000});
-  commands["reset_fec"]        = std::make_unique<FixCommand>(6007, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0xffffffff, 0xffff0001});
-  commands["reset_sampas"]     = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0xffffffff, 0x00000400});
-  commands["trigger_1hz"]      = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000002});
-  commands["trigger_2.5khz"]   = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000800});
-  commands["trigger_external"] = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000008});
-  commands["trigger_freq"]     = std::make_unique<TriggerUDP>();
-  commands["word_length"]      = std::make_unique<WordLength>();
-  commands["zero_suppression"] = std::make_unique<ZeroSuppression>();
-  commands["set_all_sampas"]   = std::make_unique<SampaBroadcastPairs>();
-  commands["pretrigger"]       = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
-  commands["sampa_config"]     = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
-  commands["pedestal_cliff"]   = std::make_unique<PedestalCliff>();
+  commands["start"]                = std::make_unique<FixCommand>(6600, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000001});
+  commands["stop"]                 = std::make_unique<FixCommand>(6600, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000000});
+  commands["reset_fec"]            = std::make_unique<FixCommand>(6007, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0xffffffff, 0xffff0001});
+  commands["reset_sampas"]         = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0xffffffff, 0x00000400});
+  commands["trigger_1hz"]          = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000002});
+  commands["trigger_2.5khz"]       = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x0000000f, 0x00000800});
+  commands["trigger_external"]     = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000008});
+  commands["trigger_freq"]         = std::make_unique<TriggerUDP>();
+  commands["word_length"]          = std::make_unique<WordLength>();
+  commands["zero_suppression"]     = std::make_unique<ZeroSuppression>();
+  commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
+  commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
+  commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
+  commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
+  commands["pedestal_cliff"]       = std::make_unique<PedestalCliff>();
   // clang-format on
 
   return commands;
