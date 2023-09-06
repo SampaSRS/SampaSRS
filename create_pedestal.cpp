@@ -59,7 +59,7 @@ void make_plot(const char *filename)
 
     infile.close();
 
-    TCanvas *c1 = new TCanvas("c1","c1",1600, 800);
+    auto *c1 = new TCanvas("c1","c1",1600, 800);
     c1->Divide(2,1);
     c1->cd(1);
     meanHist->Draw();
@@ -109,10 +109,12 @@ int main(int argc, const char* argv[])
     return 1;
   }
   bool PlotPedestal=true;
+  bool Gen_ZS_file=true;
   const char* input_name = argv[1];
 
   auto input_path = std::filesystem::path(input_name);
   auto rootfname = input_path.replace_extension(".txt").string();
+  auto zsfname = input_path.replace_extension("ZS_file.txt").string();
 
   TFile file(input_name, "READ");
   TTreeReader reader("waveform", &file);
@@ -156,20 +158,34 @@ int main(int argc, const char* argv[])
 
   std::cout << "Generating pedestal file: " << rootfname << "\n";
   std::ofstream TxtOutFile(rootfname);
+  std::ofstream ZSOutFile(zsfname);
 
-  // TxtOutFile << "sampa channel global_channel mean std\n";
+  ZSOutFile << "stop" << "\n";
+  ZSOutFile << "reset_fec" << "\n";
+  ZSOutFile << "reset_sampas" << "\n";
+  ZSOutFile << "trigger_external" << "\n";
+  ZSOutFile << "pretrigger 25" << "\n";
 
   for (auto& [global_channel, pedestal] : channels) {
     const double mean = pedestal.sum / static_cast<double>(pedestal.count);
     const double var = pedestal.sum_squared / static_cast<double>(pedestal.count) - std::pow(mean, 2);
     TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
-    // TxtOutFile << pedestal.sampa << " " << pedestal.channel << " " << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
+    //ZS cut = baseline+3sigma ATTENTION: SAMPA index is sent from 8 to 11 but needs to be written from 0 to 4 (see sampa-8).
+    if(var==0){ //channel locked - suppress it at maximum
+      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1024 << "\n"; 
+    }
+    else {
+      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
+    }
+     
   }
 
   TxtOutFile.close();
+  ZSOutFile.close();
   if(PlotPedestal)
   {
     make_plot(rootfname.c_str());
   }
+
   return 0;
 }

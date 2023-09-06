@@ -473,8 +473,9 @@ namespace commands {
       if (args.size() != 3) {
         throw std::invalid_argument("Expects 3 arguments");
       }
-      char sampa = (char) args[0];
-      char channel = (char)args[1];
+      
+      auto sampa = static_cast<char> (args[0]);
+      auto channel = static_cast <char> (args[1]);
       // Zero suppression uses 2 bit resolution
       auto val = args[2] << 2u;
 
