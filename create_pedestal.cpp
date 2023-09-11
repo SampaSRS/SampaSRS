@@ -156,6 +156,10 @@ int main(int argc, const char* argv[])
     event_id++;
   }
 
+  const size_t SIZE = 128; // However many elements you want in the vector.  
+  const bool initial_value = false; // All elements will be set to this value
+  std::vector<bool> Has_pedestal_vec(SIZE, initial_value);
+
   std::cout << "Generating pedestal file: " << rootfname << "\n";
   std::ofstream TxtOutFile(rootfname);
   std::ofstream ZSOutFile(zsfname);
@@ -177,9 +181,15 @@ int main(int argc, const char* argv[])
     else {
       ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
     }
-     
+    Has_pedestal_vec[32*(pedestal.sampa-8)+pedestal.channel]=true; //fill the channels with true
   }
 
+  for(int i=0; i< Has_pedestal_vec.size(); i++)
+    {
+      if(!Has_pedestal_vec[i]){
+        ZSOutFile <<"set_zero_suppression "<< (int) i/32 << " " << i%32 << " " << 1024 << "\n";  //If the channel has no entry, suppress it at maximum (just in case)
+      }
+    }   
   TxtOutFile.close();
   ZSOutFile.close();
   if(PlotPedestal)
@@ -189,3 +199,4 @@ int main(int argc, const char* argv[])
 
   return 0;
 }
+// 
