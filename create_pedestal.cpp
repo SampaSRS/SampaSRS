@@ -114,7 +114,7 @@ int main(int argc, const char* argv[])
 
   auto input_path = std::filesystem::path(input_name);
   auto rootfname = input_path.replace_extension(".txt").string();
-  auto zsfname = input_path.replace_extension("ZS_file.txt").string();
+  auto zsfname = input_path.replace_extension("ZS_config.txt").string();
 
   TFile file(input_name, "READ");
   TTreeReader reader("waveform", &file);
