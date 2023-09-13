@@ -176,7 +176,7 @@ int main(int argc, const char* argv[])
     TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
     //ZS cut = baseline+3sigma ATTENTION: SAMPA index is sent from 8 to 11 but needs to be written from 0 to 4 (see sampa-8).
     if(var==0){ //channel locked - suppress it at maximum
-      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1024 << "\n"; 
+      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1023 << "\n"; 
     }
     else {
       ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
@@ -187,7 +187,7 @@ int main(int argc, const char* argv[])
   for(int i=0; i< Has_pedestal_vec.size(); i++)
     {
       if(!Has_pedestal_vec[i]){
-        ZSOutFile <<"set_zero_suppression "<< (int) i/32 << " " << i%32 << " " << 1024 << "\n";  //If the channel has no entry, suppress it at maximum (just in case)
+        ZSOutFile <<"set_zero_suppression "<< (int) i/32 << " " << i%32 << " " << 1023 << "\n";  //If the channel has no entry, suppress it at maximum (just in case)
       }
     }   
   TxtOutFile.close();

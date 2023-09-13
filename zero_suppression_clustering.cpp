@@ -27,7 +27,7 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
       mapfile >> sigma;
       if(sigma==0)
       {
-        my_map[glchn] = {baseline,1000}; //canais vem com baseline com todos valores igual sigma==0/ matar esse canal
+        my_map[glchn] = {baseline,1023}; //canais vem com baseline com todos valores igual sigma==0/ matar esse canal
       }
       else
       {
