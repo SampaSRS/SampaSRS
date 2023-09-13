@@ -5,3 +5,5 @@ trigger_external
 #trigger_1hz
 word_length 50
 pretrigger 25
+set_zero_suppression 8 32 153
+#recebe 0, 1, 2, 3

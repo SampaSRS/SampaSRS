@@ -483,6 +483,30 @@ namespace commands {
     }
   };
 
+  struct SetZeroOffset : Command {
+    explicit SetZeroOffset()
+        : Command("Set the zero suppression offset for each channels")
+    {
+    }
+
+    Requests make(const std::vector<uint32_t>& args) const override
+    {
+      if (args.size() != 3) {
+        throw std::invalid_argument("Expects 3 arguments");
+      }
+      
+      auto sampa = static_cast<char> (args[0]);
+      auto channel = static_cast <char> (args[1]);
+      // Zero suppression uses 2 bit resolution
+      auto val = args[2] << 2u;
+
+      return {channel_write(sampa, channel, ChannelRegister::ZSOFF, val)};
+    }
+  };
+
+
+
+
 
   struct PedestalCliff : Command {
     explicit PedestalCliff()
@@ -535,6 +559,7 @@ get_commands()
   commands["word_length"]          = std::make_unique<WordLength>();
   commands["zero_suppression"]     = std::make_unique<ZeroSuppression>();
   commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
+  commands["set_zero_offset"]      = std::make_unique<SetZeroOffset>();
   commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
   commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
   commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
