@@ -69,6 +69,7 @@ if (ROOT_FOUND)
 
     add_executable(sampa_decoder sampa_decoder.cpp)
     add_executable(clustering clustering.cpp)
+    add_executable(zs_clustering zs_clustering.cpp)
     add_executable(common_mode common_mode.cpp)
     add_executable(create_pedestal create_pedestal.cpp)
     
@@ -79,10 +80,11 @@ if (ROOT_FOUND)
     
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
     target_link_libraries(clustering PRIVATE sampasrs sampa_root)
+    target_link_libraries(zs_clustering.cpp PRIVATE sampasrs sampa_root)
     target_link_libraries(common_mode PRIVATE sampasrs sampa_root)
     target_link_libraries(create_pedestal PRIVATE sampasrs sampa_root)
 
-    list(APPEND targets_to_install sampa_decoder clustering common_mode create_pedestal sampa_root)
+    list(APPEND targets_to_install sampa_decoder clustering zs_clustering common_mode create_pedestal sampa_root)
 else()
     message(WARNING "ROOT not found, sampa_decoder won't be compiled")
 endif()
@@ -99,8 +101,8 @@ if (SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
         sampa_gui
         sampa_gui.cpp
         ${implot_SOURCE_DIR}/implot.h
-        ${implot_SOURCE_DIR}/implot_internal.h
         ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_internal.h
         ${implot_SOURCE_DIR}/implot_items.cpp
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
