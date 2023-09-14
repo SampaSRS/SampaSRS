@@ -80,7 +80,7 @@ if (ROOT_FOUND)
     
     target_link_libraries(sampa_decoder PRIVATE sampasrs sampa_root)
     target_link_libraries(clustering PRIVATE sampasrs sampa_root)
-    target_link_libraries(zs_clustering.cpp PRIVATE sampasrs sampa_root)
+    target_link_libraries(zs_clustering PRIVATE sampasrs sampa_root)
     target_link_libraries(common_mode PRIVATE sampasrs sampa_root)
     target_link_libraries(create_pedestal PRIVATE sampasrs sampa_root)
 
