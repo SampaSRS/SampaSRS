@@ -56,9 +56,9 @@ if (SAMPA_BUILD_ACQUISITION)
         add_compile_definitions(TINS_STATIC NOMINMAX)
     endif()
 
-    CPMAddPackage("https://github.com/mfontanini/libtins.git@4.4"
+    CPMAddPackage(
         NAME tins
-        VERSION 4.4
+        VERSION 4.5
         GIT_REPOSITORY "https://github.com/mfontanini/libtins.git"
         OPTIONS
         ${LIBTINS_OPTIONS}
@@ -70,7 +70,7 @@ if(SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
     CPMAddPackage(
     NAME hello_imgui
     GITHUB_REPOSITORY pthom/hello_imgui
-    GIT_TAG master
+    GIT_TAG 0.8.0
     OPTIONS "HELLOIMGUI_USE_SDL_OPENGL3 ON"
     )
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${hello_imgui_SOURCE_DIR}/hello_imgui_cmake)
