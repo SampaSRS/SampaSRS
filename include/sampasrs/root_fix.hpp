@@ -8,8 +8,7 @@
 #include <cstddef>
 #include <string_view>
 
-namespace ROOT {
-namespace Internal {
+namespace ROOT::Internal {
   class TStringView {
     const char* fData {nullptr};
     size_t fLength {0};
@@ -21,8 +20,7 @@ public:
     {
     }
 
-    operator std::string_view() const { return std::string_view(fData, fLength); }
+    explicit operator std::string_view() const { return {fData, fLength}; }
   };
-} // namespace Internal
 } // namespace ROOT
 #endif

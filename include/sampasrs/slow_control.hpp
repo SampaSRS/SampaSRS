@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -69,6 +70,23 @@ struct Request {
 
 using Requests = std::vector<Request>;
 
+  // Helper function to parse space separeted data from a string
+  // \param input string
+  // \param args output variables
+  template <typename... T>
+  bool parse_args(const std::string& input, T&&... args) {
+      std::istringstream parser(input);
+      (parser >> ... >> args);
+      bool ok = !parser.fail();
+      
+      // check for leftovers
+      std::string leftovers {};
+      parser >> leftovers;
+      std::cout << leftovers << "#\n";
+
+      return ok && leftovers.empty();
+  }
+
 struct Command {
   std::string info {};
   explicit Command(const std::string& _info)
@@ -76,7 +94,7 @@ struct Command {
   {
   }
 
-  virtual Requests make(const std::vector<uint32_t>& args) const = 0;
+  virtual Requests parse(const std::string& args) const = 0;
 
   // Special Member functions
   virtual ~Command() = default;
@@ -107,31 +125,30 @@ class SlowControl {
     }
 
     std::istringstream line(command_line);
-    std::string command_word {};
-    line >> command_word;
+    std::string command_name {};
+    line >> command_name;
 
-    std::vector<uint32_t> args;
-    std::copy(std::istream_iterator<uint32_t>(line), std::istream_iterator<uint32_t>(), std::back_inserter(args));
+    const auto args = line.str();
 
     // Try to find command word
-    auto idx = m_command_list.find(command_word);
+    auto idx = m_command_list.find(command_name);
     if (idx == m_command_list.end()) {
       return false;
     }
 
     try {
-      auto requests = idx->second->make(args);
+      auto requests = idx->second->parse(args);
 
       return std::all_of(requests.begin(), requests.end(), [&](const auto& request) {
         bool ok = send_check(request.port, request.payload);
-        if (command_word == "reset_fec" || command_word == "reset_sampas") {
+        if (command_name == "reset_fec" || command_name == "reset_sampas") {
           // it seams we need to give some time for the fec to reset
           std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
         return ok;
       });
     } catch (const std::exception& e) {
-      fmt::print(std::cerr, "{}: {}\n", command_word, e.what());
+      fmt::print(std::cerr, "{}: {}\n", command_name, e.what());
       return false;
     }
   }
@@ -181,7 +198,7 @@ class SlowControl {
   private:
   std::vector<uint8_t> m_response_payload {};
   PacketSender m_sender {};
-  const CommandList m_command_list;
+  CommandList m_command_list;
 };
 
 namespace commands {
@@ -275,7 +292,7 @@ namespace commands {
     {
     }
 
-    Requests make(const std::vector<uint32_t>& /*args*/) const override { return {cmd}; }
+    Requests parse(const std::string& /*args*/) const override { return {cmd}; }
   };
 
   struct TriggerUDP : Command {
@@ -284,14 +301,14 @@ namespace commands {
     {
     }
 
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& args) const override
     {
-      if (args.size() != 1) {
+      uint32_t freq {};
+      if (!parse_args(args, freq)) {
         throw std::invalid_argument("Expects 1 argument");
       }
       constexpr uint64_t cycles_per_second = static_cast<uint64_t>(6000000) * 33;
       constexpr uint64_t min_freq = std::numeric_limits<uint32_t>::max() / cycles_per_second;
-      auto freq = args[0];
 
       if (freq < min_freq || freq > cycles_per_second) {
         throw std::domain_error("Invalid frequency range");
@@ -380,17 +397,22 @@ namespace commands {
     {
     }
 
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& args) const override
     {
-      size_t expected_args = has_reg ? 1 : 2;
+      uint32_t reg {};
+      uint32_t val {};
 
-      if (args.size() != expected_args) {
-        throw std::invalid_argument(fmt::format("Expects {} arguments", expected_args));
+      if (has_reg) {
+        if (!parse_args(args, val)) {
+          throw std::invalid_argument("Expects 1 argument");
+        }
+        reg = has_reg.value();
+      } else {
+        if (!parse_args(args, reg, val)) {
+          throw std::invalid_argument("Expects 2 arguments");
+        }
       }
-
-      uint32_t reg = has_reg.value_or(args[0]);
-      uint32_t val = has_reg ? args[0] : args[1];
-
+      
       std::vector<std::pair<unsigned char, uint32_t>> data {};
       for (unsigned char i = 0; i < sampa_count; ++i) {
         data.emplace_back(reg, val);
@@ -409,11 +431,15 @@ namespace commands {
     {
     }
 
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& args) const override
     {
       size_t min_args = has_reg ? 1 : 2;
 
-      if (args.size() != min_args) {
+      std::vector<uint32_t> values;
+      std::istringstream parser(args);
+      std::copy(std::istream_iterator<uint32_t>(parser), std::istream_iterator<uint32_t>(), std::back_inserter(values));
+
+      if (values.size() != min_args) {
         throw std::invalid_argument(fmt::format("Expects at least {} arguments", min_args));
       }
 
@@ -431,65 +457,106 @@ namespace commands {
     {
     }
 
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& args) const override
     {
-      if (args.size() != 1) {
-        throw std::invalid_argument("Expects 1 argument");
+      uint32_t length {};
+      if (!parse_args(args, length)) {
+        throw std::invalid_argument("Expected arguments: 1 integer");
       }
 
       auto [low_byte, high_byte] = low_high_bytes(args[0]);
-
       return {sampa_write_burst(-1, SampaRegister::TWLENL, {low_byte, high_byte})};
     }
   };
 
-  struct ZeroSuppression : Command {
-    explicit ZeroSuppression()
+  struct ZeroSuppressionBroadcast : Command {
+    explicit ZeroSuppressionBroadcast()
         : Command("Broadcast the same zero suppression threshold for all channels")
     {
     }
-
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& args) const override
     {
-      if (args.size() != 1) {
+      uint32_t val {};
+      if (!parse_args(args, val)) {
         throw std::invalid_argument("Expects 1 argument");
       }
 
       // Zero suppression uses 2 bit resolution
-      auto val = args[0] << 2u;
+      val <<= 2u;
 
       return {channel_write(-1, -1, ChannelRegister::ZSTHR, val)};
     }
   };
 
-  struct SetZeroSuppression : Command {
-    explicit SetZeroSuppression()
-        : Command("Set the zero suppression threshold for each channels")
+  struct ZeroSuppression : Command {
+    explicit ZeroSuppression()
+        : Command("Set the zero suppression threshold for a single channel")
     {
     }
 
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& args) const override
     {
-      if (args.size() != 3) {
+      char sampa {};
+      char channel {};
+      uint32_t val {};
+      if (!parse_args(args, sampa, channel, val)) {
         throw std::invalid_argument("Expects 3 arguments");
       }
-      char sampa = (char) args[0];
-      char channel = (char)args[1];
+
       // Zero suppression uses 2 bit resolution
-      auto val = args[2] << 2u;
+      val <<= 2u;
 
       return {channel_write(sampa, channel, ChannelRegister::ZSTHR, val)};
     }
   };
 
-
-  struct PedestalCliff : Command {
-    explicit PedestalCliff()
-        : Command("Fiz a fake waveform with increasing value starting from zero")
+  struct ZeroSuppressionFile : Command {
+    explicit ZeroSuppressionFile()
+        : Command("Set the zero suppression threshold for each channels from a file")
     {
     }
 
-    Requests make(const std::vector<uint32_t>& args) const override
+    Requests parse(const std::string& filename) const override
+    {
+      // File: sampa channel value
+      std:std::ifstream file(filename);
+      if (!file) {
+        throw std::invalid_argument(fmt::format("Unable to open zero suppression file: {}", filename));
+      }
+      std::string line;
+      Requests requests {};
+
+      while (std::getline(file, line)) {
+        if (line.empty()) { continue; }
+        if (line[0] == '#') { continue; }
+        std::istringstream parser(line);
+        
+        char sampa {};
+        char channel {};
+        uint32_t value {};
+        
+        if (!(parser >> sampa >> channel >> value)) {
+          throw std::invalid_argument(fmt::format("Unable to parse zero suppression file: {}", filename));
+        }
+        
+        // Zero suppression uses 2 bit resolution
+        value <<= 2u;
+        
+        auto tmp = channel_write(sampa, channel, ChannelRegister::ZSTHR, value);
+        requests.insert(requests.end(), tmp.begin(), tmp.end());
+      }
+
+      return requests;
+    }
+  };
+
+  struct PedestalCliff : Command {
+    explicit PedestalCliff()
+        : Command("Fake waveform with increasing value starting from zero")
+    {
+    }
+
+    Requests parse(const std::string& args) const override
     {
       if (!args.empty()) {
         throw std::invalid_argument("Expects no argument");
@@ -532,8 +599,9 @@ get_commands()
   commands["trigger_external"]     = std::make_unique<FixCommand>(6041, SubAddress::Zero, Type::WritePairs, 0, std::vector<uint32_t> {0x00000000, 0x00000008});
   commands["trigger_freq"]         = std::make_unique<TriggerUDP>();
   commands["word_length"]          = std::make_unique<WordLength>();
-  commands["zero_suppression"]     = std::make_unique<ZeroSuppression>();
-  commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
+  commands["zerosup"]              = std::make_unique<ZeroSuppression>();
+  commands["zerosup_broadcast"]    = std::make_unique<ZeroSuppressionBroadcast>();
+  commands["zerosup_file"]         = std::make_unique<ZeroSuppressionFile>();
   commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
   commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
   commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");

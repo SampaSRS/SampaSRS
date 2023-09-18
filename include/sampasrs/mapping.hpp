@@ -3,13 +3,11 @@
 #include <fstream>
 #include <cstring> 
 #include <cstdio>
+#include <unordered_map>
 #include <vector>
+#include <string>
 
 namespace sampasrs {
-
-
-#include <iostream>
-#include <string>
  
 inline void Mapping_strips(std::unordered_map<int, std::pair<double, double>> &my_map)
 {

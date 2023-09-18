@@ -1,7 +1,7 @@
 #pragma once
 
-#include <sampasrs/decoder.hpp>
-#include <sampasrs/utils.hpp>
+#include "sampasrs/decoder.hpp"
+#include "sampasrs/utils.hpp"
 
 #include <boost/circular_buffer.hpp>
 #include <boost/histogram.hpp> // make_histogram, regular, weight, indexed
