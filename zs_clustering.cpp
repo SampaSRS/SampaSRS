@@ -1,4 +1,6 @@
-  #include <iostream>
+  #include <RtypesCore.h>
+#include <cstddef>
+#include <iostream>
 #include <numeric>
 #include <string_view>
 #include <vector>
@@ -206,12 +208,14 @@ int main(int argc, char *argv[])
   MyTree->Branch("xcm",&xcm,"xcm/D");
   MyTree->Branch("E",&E,"E/D");
 
-  int count_words=0;
+
+  int Num_words=0;
   int gl_chn=0;
   int max_word=0;
   int E_max=0;
   int E_int=0;
   int T_max=0;
+  int j = 0;
 
   std::vector <int> CSize ={};
   std::vector <double> ClstPosX ={};
@@ -232,18 +236,20 @@ int event_id = 0;
     {
       E_max=0;
       T_max=0;
-      // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
+      j=0;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       std::cout <<"gl_chn: ["<<gl_chn<<"] ";
-      for (size_t j = 0; j <= event_words[i].size(); ++j) {
-        count_words=event_words[i][0];
-        std::cout << count_words << " ";
-        for(size_t k = 0; k <= count_words; ++k){
-          j++;
-            std::cout<< event_words[i][j]<<" "; 
-            
-        }
-      std::cout<<std::endl;
+
+      while(j < event_words[i].size()) {
+        Num_words = event_words[i][j];
+
+        std::cout << Num_words <<" [ ";
+          for(size_t k = 0; k<= Num_words; k++) {
+            j++;
+            std::cout<<event_words[i][j]<<" "; 
+          }
+          std::cout <<" ] ";
+       j++;
       }
       // if(E_max>1 && E_max<1024){ //checking values and filling vectors
       // // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
