@@ -1,4 +1,4 @@
-#include <iostream>
+  #include <iostream>
 #include <numeric>
 #include <string_view>
 #include <vector>
@@ -162,22 +162,21 @@ int main(int argc, char *argv[])
   time_t end =0;
   time(&start);
 
-  if(argc != 3)
+  if(argc != 2)
   {
-    std::cout << "Usage =: ./clustering <pedestal_file.txt> <data_file.root>" << std::endl;
+    std::cout << "Usage =: ./zs_clustering.cpp <data_file.root>" << std::endl;
     return 0;
   }
 
-  std::string pedestal_file = argv[1];
-  std::string file_name = argv[2];
+  std::string file_name = argv[1];
    
- if (file_name.empty() || pedestal_file.empty()) {
+ if (file_name.empty()) {
     std::cout <<"Empty files?" << std::endl;
     return 0; // just a precaution
   }
 
   auto input_path = std::filesystem::path(file_name);
-  auto Clstrootfname = input_path.replace_extension("Clst.root").string();
+  auto Clstrootfname = input_path.replace_extension("ZS_Clst.root").string();
 
   TFile file(file_name.data(), "READ");
   TTreeReader reader("waveform", &file);
@@ -207,11 +206,7 @@ int main(int argc, char *argv[])
   MyTree->Branch("xcm",&xcm,"xcm/D");
   MyTree->Branch("E",&E,"E/D");
 
-
-  std::unordered_map<int, std::pair<double, double>> map_of_pedestals = {};
-
-  Map_pedestal(pedestal_file, map_of_pedestals); // change the mapping on mapping.hpp for a diferent detector
-
+  int count_words=0;
   int gl_chn=0;
   int max_word=0;
   int E_max=0;
@@ -231,38 +226,29 @@ int main(int argc, char *argv[])
 int event_id = 0;
   while (reader.Next()) 
   {
+    std::cout << "_________new evt__________" << std::endl;
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
-      // std::cout <<event_words.size()<<std::endl;
       E_max=0;
       T_max=0;
       // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
       gl_chn = 32*(sampa[i]-8)+channel[i];
-      // for (size_t j = 2; j < event_words[i].size(); ++j) {
-      for (size_t j = 2; j < 30; ++j) 
-      { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second)
-        { //first threshold
-          // E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
-          if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
-          {
-            E_max = event_words[i][j]-map_of_pedestals[gl_chn].first;
-            T_max = j;
-            if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second)
-            { //validation threshold not yet implemented in the clustering
-              evt_ok=true;
-            }
-          }
-
+      std::cout <<"gl_chn: ["<<gl_chn<<"] ";
+      for (size_t j = 0; j <= event_words[i].size(); ++j) {
+        count_words=event_words[i][0];
+        std::cout << count_words << " ";
+        for(size_t k = 0; k <= count_words; ++k){
+          j++;
+            std::cout<< event_words[i][j]<<" "; 
+            
         }
-        
-
+      std::cout<<std::endl;
       }
-      if(E_max>1 && E_max<1024){ //checking values and filling vectors
-      // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
-      hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
-      }
+      // if(E_max>1 && E_max<1024){ //checking values and filling vectors
+      // // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
+      // hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
+      // }
       evt_ok=false;
     }
     std::sort(hit.begin(), hit.end());    
@@ -270,27 +256,27 @@ int event_id = 0;
     // {
 
     // std::cout << event_id <<std::endl;
-    if(!hit.empty())
-    {
-      Make_Cluster(hit, CSize, ClstPosX, ClstEnergy);
-    }
+    // if(!hit.empty())
+    // {
+    //   Make_Cluster(hit, CSize, ClstPosX, ClstEnergy);
+    // }
 
-    for(int j = 0; j<ClstPosX.size(); j++)
-    {
-      ClstID = j;
-      trgID = event_id;
-      ClstSize = CSize.at(j);
-      xcm = ClstPosX.at(j);
-      E = ClstEnergy.at(j);
-      // std::cout << ClstID <<" "<<ClstSize<<" "<<xcm<<" "<<E<<std::endl;
-      MyTree->Fill();
-    }
+    // for(int j = 0; j<ClstPosX.size(); j++)
+    // {
+    //   ClstID = j;
+    //   trgID = event_id;
+    //   ClstSize = CSize.at(j);
+    //   xcm = ClstPosX.at(j);
+    //   E = ClstEnergy.at(j);
+    //   // std::cout << ClstID <<" "<<ClstSize<<" "<<xcm<<" "<<E<<std::endl;
+    //   MyTree->Fill();
+    // }
 
     
-    CSize.clear();
-    ClstEnergy.clear();
-    ClstPosX.clear();
-    hit.clear();
+    // CSize.clear();
+    // ClstEnergy.clear();
+    // ClstPosX.clear();
+    // hit.clear();
     
     evt_ok=false;
     
@@ -301,7 +287,9 @@ int event_id = 0;
       std::cout << event_id <<" events analyzed" <<std::endl;
 
     }
+    std::cout<<std::endl;
   } 
+
     //Escrever a nova TTree-----------------------------------------------
     MyTree->Write();
     delete hfile;
