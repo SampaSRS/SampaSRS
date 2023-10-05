@@ -216,6 +216,7 @@ int main(int argc, char *argv[])
   int E_int=0;
   int T_max=0;
   int j = 0;
+  int T_0 = 0;
 
   std::vector <int> CSize ={};
   std::vector <double> ClstPosX ={};
@@ -234,6 +235,7 @@ int event_id = 0;
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
+      E_int=0;
       E_max=0;
       T_max=0;
       j=0;
@@ -242,13 +244,23 @@ int event_id = 0;
 
       while(j < event_words[i].size()) {
         Num_words = event_words[i][j];
-
         std::cout << Num_words <<" [ ";
           for(size_t k = 0; k<= Num_words; k++) {
             j++;
+            if(k == 0)
+              {
+                T_0 = event_words[i][j];
+              }
+            else
+              {
+                E_int+=event_words[i][j];
+              }
             std::cout<<event_words[i][j]<<" "; 
           }
-          std::cout <<" ] ";
+          
+          std::cout <<" ] ---* ";
+          std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
+       E_int=0;
        j++;
       }
       // if(E_max>1 && E_max<1024){ //checking values and filling vectors
