@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
 
   TTree *MyTree = new TTree("evt","evt");
 
-
+  
   double E=0;
   double xcm=0;
   int ClstSize=0;
@@ -209,6 +209,7 @@ int main(int argc, char *argv[])
 
 
   std::unordered_map<int, std::pair<double, double>> map_of_pedestals = {};
+  
 
   Map_pedestal(pedestal_file, map_of_pedestals); // change the mapping on mapping.hpp for a diferent detector
 
@@ -221,8 +222,9 @@ int main(int argc, char *argv[])
   std::vector <int> CSize ={};
   std::vector <double> ClstPosX ={};
   std::vector <double> ClstEnergy ={};
+  std::array<double, 30> sum_cm={};
+  std::array<double, 30> n_chns={};
 
-  
 
   std::vector <std::pair <double, std::pair<int, int>>> hit ={};
 
@@ -231,20 +233,40 @@ int main(int argc, char *argv[])
 int event_id = 0;
   while (reader.Next()) 
   {
+    std::fill( std::begin( sum_cm ), std::end( sum_cm ), 0 );
+    std::fill( std::begin( n_chns ), std::end( n_chns ), 0 );
+    
     auto& event_words = *words;
+    
+    for (size_t j = 2; j < 30; ++j) {
+      for (size_t i = 0; i < event_words.size(); ++i) {
+        gl_chn = 32*(sampa[i]-8)+channel[i];
+        if(event_words[i][j] < map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second){
+          sum_cm[j] += event_words[i][j]-map_of_pedestals[gl_chn].first;
+          n_chns[j]++;
+        }
+      }
+    }
+
+    for (size_t j = 2; j < 30; ++j) {
+      std::cout << j <<" "<< sum_cm[j] <<" " << n_chns[j]<<" "<< sum_cm[j]/n_chns[j]<<std::endl;
+    }
+
+
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
       // std::cout <<event_words.size()<<std::endl;
       E_max=0;
       T_max=0;
+      E_int=0;
       // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < 30; ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
         { //first threshold
-          // E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
+           E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
           if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
           {
             E_max = event_words[i][j]-map_of_pedestals[gl_chn].first;
@@ -259,9 +281,12 @@ int event_id = 0;
         
 
       }
+      
       if(E_max>1 && E_max<1024){ //checking values and filling vectors
       // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
-      hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
+      hit.push_back(std::make_pair(x[i], std::make_pair(E_int, evt_ok)));
+      // hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
+
       }
       evt_ok=false;
     }
@@ -273,6 +298,7 @@ int event_id = 0;
     if(!hit.empty())
     {
       Make_Cluster(hit, CSize, ClstPosX, ClstEnergy);
+      
     }
 
     for(int j = 0; j<ClstPosX.size(); j++)
@@ -294,14 +320,15 @@ int event_id = 0;
     
     evt_ok=false;
     
-    E_int = 0;
+
     ++event_id;
     if(event_id % 10000==0)
     {
       std::cout << event_id <<" events analyzed" <<std::endl;
 
     }
-  } 
+  }
+
     //Escrever a nova TTree-----------------------------------------------
     MyTree->Write();
     delete hfile;
