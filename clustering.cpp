@@ -241,16 +241,16 @@ int event_id = 0;
     for (size_t j = 2; j < 30; ++j) {
       for (size_t i = 0; i < event_words.size(); ++i) {
         gl_chn = 32*(sampa[i]-8)+channel[i];
-        if(event_words[i][j] < map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second){
+        if(event_words[i][j] < map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second) {
           sum_cm[j] += event_words[i][j]-map_of_pedestals[gl_chn].first;
-          n_chns[j]++;
+          n_chns[j] ++;
         }
       }
     }
 
-    for (size_t j = 2; j < 30; ++j) {
-      std::cout << j <<" "<< sum_cm[j] <<" " << n_chns[j]<<" "<< sum_cm[j]/n_chns[j]<<std::endl;
-    }
+    // for (size_t j = 2; j < 30; ++j) {
+    //   std::cout << j <<" "<< sum_cm[j] <<" " << n_chns[j]<<" "<<event_words.size()<<" "<< sum_cm[j]/n_chns[j]<<std::endl;
+    // }
 
 
     for (size_t i = 0; i < event_words.size(); ++i) 
@@ -264,14 +264,14 @@ int event_id = 0;
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < 30; ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j])
         { //first threshold
-           E_int += event_words[i][j]-map_of_pedestals[gl_chn].first;
+           E_int += event_words[i][j]-map_of_pedestals[gl_chn].first-sum_cm[j]/n_chns[j];
           if(event_words[i][j]-map_of_pedestals[gl_chn].first>E_max)
           {
-            E_max = event_words[i][j]-map_of_pedestals[gl_chn].first;
+            E_max = event_words[i][j]-map_of_pedestals[gl_chn].first-sum_cm[j]/n_chns[j];
             T_max = j;
-            if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second)
+            if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j])
             { //validation threshold not yet implemented in the clustering
               evt_ok=true;
             }
