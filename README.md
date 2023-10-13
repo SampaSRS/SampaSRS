@@ -10,6 +10,7 @@ The code has the following build dependencies
 - [ROOT](https://root.cern/) (6.26 or later)
 - [libpcap](https://www.tcpdump.org/index.html)
 - SDL2 (for sampa_gui)
+- Latest comatible firmware version - 14
 
 ### Ubuntu dependencies
 
