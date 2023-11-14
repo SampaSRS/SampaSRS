@@ -51,6 +51,10 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
 
 }
 
+bool sort_second(tuple<int, double, int, int >& p,
+         tuple<int, double, int, int >& q){
+            return get<1>(p)>get<1>(q);
+         }
 
 void Make_Cluster(std::vector<std::tuple<int, double, int, int >> hit,std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
 std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
@@ -63,18 +67,18 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
   int ClstID=0;
   int ClstSize=1;
 
+  int CurrentTime = 0;
+  double CurrentPos = 0;
+  double CurrentEnergy = 0;
+  bool ValidCluster;
 
-  double max_timediff_Emax = 3;
+  double max_timediff_Emax = 2;
 
   int LastTime = get<0>(hit[0]); 
   double LastPosition=get<1>(hit[0]);
   double LastEnergy=get<2>(hit[0]);
   bool NewCluster=get<3>(hit[0]);
   
-  int CurrentTime = 0;
-  double CurrentPos = 0;
-  double CurrentEnergy = 0;
-  bool ValidCluster;
 
   x_pos+=LastPosition*LastEnergy;
   E_total+= LastEnergy;
@@ -97,7 +101,7 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
             ClustTime.push_back(ClstTime/E_total);
             ClustPosX.push_back(x_pos/E_total);
             ClustEnergy.push_back(E_total);
-            std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
+            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
           }
           LastPosition=CurrentPos;
           LastTime = CurrentTime;
@@ -117,62 +121,62 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
           ClstID++;
 
         }
-
-    else
-    {
-      ClstTime+=CurrentEnergy*CurrentTime;
-      x_pos+=CurrentPos*CurrentEnergy;
-      E_total+=CurrentEnergy;
-      LastPosition=CurrentPos;
-      LastEnergy=CurrentEnergy;
-      LastTime = CurrentTime;
-      if(ValidCluster)
-      {
-        NewCluster=true;
-      }
-      ClstSize++;
-    }
-    
-
-  }
-
-  if(abs(get<0>(hit.back())-LastTime)>pitch)
+        else
         {
-          //fecha o cluster atual e guarda a distancia atual como a ultima
-          ClstSize=1;
-          x_pos=0;
-          ClstTime=0;
-          E_total=0;
-          x_pos+=get<1>(hit.back())*get<2>(hit.back());
-          ClstTime+=get<0>(hit.back())*get<2>(hit.back());
-          E_total+=get<2>(hit.back());
-          if(get<3>(hit.back()))
-          {
-            NewCluster=true;
-          }
+        if(abs(CurrentPos-LastPosition)>pitch)
+        {
           if(NewCluster)
           {
             ClustSize.push_back(ClstSize);
             ClustTime.push_back(ClstTime/E_total);
             ClustPosX.push_back(x_pos/E_total);
             ClustEnergy.push_back(E_total);
-            std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
+            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
           }
-          NewCluster=false;
-          // std::cout <<"here1"<<std::endl;
+          LastPosition = CurrentPos;
+          LastTime = CurrentTime;
+          LastEnergy = CurrentEnergy;
+          ClstSize = 1;
+          x_pos = 0;
+          ClstTime = 0;
+          E_total = 0;
+          NewCluster = false;
+          x_pos += CurrentEnergy*CurrentPos;
+          ClstTime += CurrentEnergy*CurrentTime;
+          E_total += CurrentEnergy;
+          if(ValidCluster)
+          {
+            NewCluster=true;
+          }
+          ClstID++;
         }
-
-      else 
-      {
-        if(NewCluster)
-        {
-          ClustSize.push_back(ClstSize);
-          ClustTime.push_back(ClstTime/E_total);
-          ClustPosX.push_back(x_pos/E_total);
-          ClustEnergy.push_back(E_total);
-          std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl;  
+        else{
+        ClstTime+=CurrentEnergy*CurrentTime;
+        x_pos+=CurrentPos*CurrentEnergy;
+        E_total+=CurrentEnergy;
+        LastPosition=CurrentPos;
+        LastEnergy=CurrentEnergy;
+        LastTime = CurrentTime;
+        if(ValidCluster)
+          {
+          NewCluster=true;
+          }
+        ClstSize++;
         }
       }
+
+  }
+
+  //in case the cluster has a single element or it reached the end
+  if(NewCluster)
+    {
+    ClustSize.push_back(ClstSize);
+    ClustTime.push_back(ClstTime/E_total);
+    ClustPosX.push_back(x_pos/E_total);
+    ClustEnergy.push_back(E_total);
+    // std::cout << ">>>>>>>>>ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl;  
+    }
+      
 
 }
 
@@ -289,7 +293,7 @@ int event_id = 0;
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
       for (size_t j = 2; j < event_words[i].size(); ++j) 
       { //pico está +- entre 0 e 25   
-        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j] && signal_length<max_signal_duration)
+        if(event_words[i][j] > map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j])
         { //first threshold
           // std::cout << event_words[i][j] <<std::endl;
           E_int += event_words[i][j]-map_of_pedestals[gl_chn].first-sum_cm[j]/n_chns[j];
@@ -313,24 +317,29 @@ int event_id = 0;
 
       evt_ok=false;
     }
-    std::cout <<"=============begin====================="<<std::endl;
-     for(int y=0; y<hit.size() ; y++ )
-     {
-      std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
-     }
-    std::cout <<"=============sorted====================="<<std::endl;
-    std::sort(hit.begin(), hit.end());    
+    // std::cout <<"=============begin====================="<<std::endl;
+    //  for(int y=0; y<hit.size() ; y++ )
+    //  {
+    //   std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
+    //  }
+    // std::cout <<"=============sorted====================="<<std::endl;
+     
+    std::sort(hit.begin(),hit.end(), sort_second);
+    std::sort(hit.begin(), hit.end());
+    
 
-     for(int y=0; y<hit.size() ; y++ )
-     {
-      std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
-     }
-  std::cout <<"=============end====================="<<std::endl;
+  //    for(int y=0; y<hit.size() ; y++ )
+  //    {
+  //     std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
+  //    }
+  // std::cout <<"=============end====================="<<std::endl;
+
+  
     if(!hit.empty())
     {
       Make_Cluster(hit, CSize, ClstTime, ClstPosX, ClstEnergy);
     }
- std::cout <<"=============end-clustering====================="<<std::endl;
+//  std::cout <<"=============end-clustering====================="<<std::endl;
     for(int j = 0; j<ClstPosX.size(); j++)
     {
       ClstID = j;
