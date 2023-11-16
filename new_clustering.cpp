@@ -11,11 +11,10 @@
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
 
-const int window_duration = 30; //window duration to seek for a peak in triggered mode 3us (each timebin is approx 100ns)
-const int max_time_separation = 30; //maximum time separation between signals to split a cluster in time 3us
-const int max_signal_duration=6;
+const double max_timediff_Emax = 2;
 
 using namespace std;
+
 
 void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std::pair<double, double>> &my_map)
 {
@@ -25,30 +24,26 @@ void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std:
     double baseline=0;
     double sigma=0;
     mapfile.open(pedestal_file);
-    while (true) 
-    { 
+    while (true){ 
       mapfile >> glchn;
       mapfile >> baseline;
       mapfile >> sigma;
-      if(sigma==0)
-      {
+
+      if(sigma==0){
         my_map[glchn] = {baseline,1023}; //supress the channels with sigma == 0 / are frozen
       }
-      else
-      {
+
+      else{
         my_map[glchn] = {baseline,sigma};
       }
       // std::cout << glchn << " " << my_map[glchn].first <<" "<<my_map[glchn].second<<std::endl;
       
 
-      if( mapfile.eof() ) 
-      {
+      if( mapfile.eof() ){
         break;
       }
     }
     mapfile.close();
-  
-
 }
 
 bool sort_second(tuple<int, double, int, int >& p,
@@ -56,11 +51,11 @@ bool sort_second(tuple<int, double, int, int >& p,
             return get<1>(p)>get<1>(q);
          }
 
-void Make_Cluster(std::vector<std::tuple<int, double, int, int >> hit,std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
+void Make_Clusters(std::vector<std::tuple<int, double, int, int >> hit,std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
 std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
 
 {  
-  double pitch = 0.390625; //pitch real = 0.390625
+  double pitch = 0.3906; //pitch real = 0.390625
   double x_pos=0;
   double E_total=0;
   double ClstTime = 0;
@@ -72,7 +67,6 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
   double CurrentEnergy = 0;
   bool ValidCluster;
 
-  double max_timediff_Emax = 2;
 
   int LastTime = get<0>(hit[0]); 
   double LastPosition=get<1>(hit[0]);
@@ -84,24 +78,23 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
   E_total+= LastEnergy;
   ClstTime+=LastEnergy*LastTime;
 
-  for(int i=1; i<hit.size() ; i++ )
-  {
+  for(int i=1; i<hit.size() ; i++ ){
     CurrentTime = get<0>(hit[i]); 
     CurrentPos = get<1>(hit[i]); 
     CurrentEnergy = get<2>(hit[i]);
     ValidCluster = get<3>(hit[i]);
 
       //If the time difference between nighboors is greater than max_timediff_Emax
-        if(abs(CurrentTime-LastTime)>max_timediff_Emax)
+        if(abs(CurrentTime-LastTime) > max_timediff_Emax)
         {
           //If the cluster is valid close the cluster.
-          if(NewCluster)
-          {
+          if(NewCluster){
             ClustSize.push_back(ClstSize);
             ClustTime.push_back(ClstTime/E_total);
             ClustPosX.push_back(x_pos/E_total);
             ClustEnergy.push_back(E_total);
-            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
+            ClstID++;
+            std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
           }
           LastPosition=CurrentPos;
           LastTime = CurrentTime;
@@ -118,67 +111,114 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
           {
             NewCluster=true;
           }
-          ClstID++;
-
-        }
-        else
-        {
-        if(abs(CurrentPos-LastPosition)>pitch)
-        {
-          if(NewCluster)
-          {
-            ClustSize.push_back(ClstSize);
-            ClustTime.push_back(ClstTime/E_total);
-            ClustPosX.push_back(x_pos/E_total);
-            ClustEnergy.push_back(E_total);
-            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
-          }
-          LastPosition = CurrentPos;
-          LastTime = CurrentTime;
-          LastEnergy = CurrentEnergy;
-          ClstSize = 1;
-          x_pos = 0;
-          ClstTime = 0;
-          E_total = 0;
-          NewCluster = false;
-          x_pos += CurrentEnergy*CurrentPos;
-          ClstTime += CurrentEnergy*CurrentTime;
-          E_total += CurrentEnergy;
-          if(ValidCluster)
-          {
-            NewCluster=true;
-          }
-          ClstID++;
+          
         }
         else{
-        ClstTime+=CurrentEnergy*CurrentTime;
-        x_pos+=CurrentPos*CurrentEnergy;
-        E_total+=CurrentEnergy;
-        LastPosition=CurrentPos;
-        LastEnergy=CurrentEnergy;
-        LastTime = CurrentTime;
-        if(ValidCluster)
-          {
-          NewCluster=true;
+            if(abs(CurrentPos-LastPosition) > pitch){
+              if(NewCluster){
+                ClustSize.push_back(ClstSize);
+                ClustTime.push_back(ClstTime/E_total);
+                ClustPosX.push_back(x_pos/E_total);
+                ClustEnergy.push_back(E_total);
+                ClstID++;
+                std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
+              }
+
+              LastPosition = CurrentPos;
+              LastTime = CurrentTime;
+              LastEnergy = CurrentEnergy;
+              ClstSize = 1;
+              x_pos = 0;
+              ClstTime = 0;
+              E_total = 0;
+              NewCluster = false;
+              x_pos += CurrentEnergy*CurrentPos;
+              ClstTime += CurrentEnergy*CurrentTime;
+              E_total += CurrentEnergy;
+
+              if(ValidCluster){
+                NewCluster=true;
+              }
+            }
+          else{
+            ClstTime+=CurrentEnergy*CurrentTime;
+            x_pos+=CurrentPos*CurrentEnergy;
+            E_total+=CurrentEnergy;
+            LastPosition=CurrentPos;
+            LastEnergy=CurrentEnergy;
+            LastTime = CurrentTime;
+            if(ValidCluster){
+              NewCluster=true;
+            }
+            ClstSize++;
           }
-        ClstSize++;
         }
-      }
 
   }
 
   //in case the cluster has a single element or it reached the end
-  if(NewCluster)
-    {
+  if(NewCluster){
     ClustSize.push_back(ClstSize);
     ClustTime.push_back(ClstTime/E_total);
     ClustPosX.push_back(x_pos/E_total);
     ClustEnergy.push_back(E_total);
-    // std::cout << ">>>>>>>>>ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl;  
-    }
+    ClstID++;
+    std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl;  
+  }
       
 
 }
+
+// void Merge_Time_Clusters(std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
+// std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
+// {
+//   double pitch = 0.3906; //pitch real = 0.390625
+
+//   vector <double> total_size = {};
+//   vector <double> total_time = {};
+//   vector <double> total_position = {};
+//   vector <double> total_energy = {};
+
+//   int ClstSize = 0;
+//   double ClstTime = 0;
+//   double ClstPos = 0;
+//   double ClstEnergy = 0;
+
+//   //First entry
+//   ClstSize += ClustSize.at(0);
+//   ClstTime += ClustTime.at(0);
+//   ClstPos += ClustPosX.at(0);
+//   ClstEnergy += ClustEnergy.at(0); 
+
+//   while( ClustTime.size() ){
+//     for(int i = 0; i<ClustTime.size(); i++ ){ //Se a diferença de tempo for menor que timebin, checa a diferença em posição
+
+//       ClstSize += ClustSize.at(i);
+//       ClstTime += ClustTime.at(i);
+//       ClstPos += ClustPosX.at(i);
+//       ClstEnergy += ClustEnergy.at(i); 
+
+//       for(int j = i+1; j<ClustTime.size(); j++){
+//         if(abs(ClustTime.at(i)-ClustTime.at(j)) < max_timediff_Emax){
+//           if(abs(ClustPosX.at(i)-ClustPosX.at(j)) < 2*pitch){ //Se a diferença em posição for menor que 2*pitch
+//             ClstSize += ClustSize.at(j);
+//             ClstTime += ClustEnergy.at(j)*ClustTime.at(j);
+//             ClstPos += ClustEnergy.at(j)*ClustPosX.at(j);
+//             ClstEnergy += ClustEnergy.at(j); 
+//           }
+//         }
+//       }
+//     total_size.push_back(ClstSize);
+//     total_time.push_back(ClstTime);
+//     total_position.push_back(ClstPos);
+//     total_energy.push_back(ClstEnergy);
+//     ClstSize = 0;
+//     ClstTime = 0;
+//     ClstPos = 0;
+//     ClstEnergy = 0;
+//     }
+//   }
+// }
 
 int main(int argc, char *argv[])
 {
@@ -317,30 +357,37 @@ int event_id = 0;
 
       evt_ok=false;
     }
-    // std::cout <<"=============begin====================="<<std::endl;
-    //  for(int y=0; y<hit.size() ; y++ )
-    //  {
-    //   std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
-    //  }
-    // std::cout <<"=============sorted====================="<<std::endl;
+    std::cout <<"=============begin====================="<<std::endl;
+     for(int y=0; y<hit.size() ; y++ )
+     {
+      std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
+     }
+    std::cout <<"=============sorted====================="<<std::endl;
      
-    std::sort(hit.begin(),hit.end(), sort_second);
+    // std::sort(hit.begin(),hit.end(), sort_second);
     std::sort(hit.begin(), hit.end());
     
 
-  //    for(int y=0; y<hit.size() ; y++ )
-  //    {
-  //     std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
-  //    }
-  // std::cout <<"=============end====================="<<std::endl;
+     for(int y=0; y<hit.size() ; y++ )
+     {
+      std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
+     }
+  std::cout <<"=============end====================="<<std::endl;
 
   
     if(!hit.empty())
     {
-      Make_Cluster(hit, CSize, ClstTime, ClstPosX, ClstEnergy);
+      Make_Clusters(hit, CSize, ClstTime, ClstPosX, ClstEnergy);
     }
-//  std::cout <<"=============end-clustering====================="<<std::endl;
-    for(int j = 0; j<ClstPosX.size(); j++)
+
+    // if(!ClstTime.empty() && ClstTime.size()>1 )
+    // {
+    //   Merge_Time_Clusters(CSize, ClstTime, ClstPosX, ClstEnergy);
+    // }
+
+
+ std::cout <<"=============end-clustering====================="<<std::endl;
+    for(int j = 0; j<ClstTime.size(); j++)
     {
       ClstID = j;
       trgID = event_id;
