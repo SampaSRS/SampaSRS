@@ -70,8 +70,8 @@ if(SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
     CPMAddPackage(
     NAME hello_imgui
     GITHUB_REPOSITORY pthom/hello_imgui
-    GIT_TAG 0.8.0
-    OPTIONS "HELLOIMGUI_USE_SDL_OPENGL3 ON"
+    VERSION 1.0.0
+    OPTIONS "HELLOIMGUI_WITH_GLFW ON" "HELLOIMGUI_BUILD_DEMOS OFF" "HELLOIMGUI_BUILD_TESTS OFF"
     )
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${hello_imgui_SOURCE_DIR}/hello_imgui_cmake)
     set(imgui_SOURCE_DIR ${hello_imgui_SOURCE_DIR}/external/imgui)
@@ -79,10 +79,16 @@ if(SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
     CPMAddPackage(
     NAME implot
     GITHUB_REPOSITORY epezent/implot
-    VERSION 0.14
+    VERSION 0.16
     )
 
-    CPMAddPackage("gh:aiekick/ImGuiFileDialog@0.6.4")
+    # CPMAddPackage("gh:aiekick/ImGuiFileDialog@0.6.4")
+    CPMAddPackage(
+        NAME ImGuiFileDialog
+        GITHUB_REPOSITORY aiekick/ImGuiFileDialog
+        GIT_TAG cbc86cc28be136351090593a5d757ae11c90807c
+        DOWNLOAD_ONLY TRUE
+    )
     file(GLOB ImGuiFileDialog_SOURCES 
 		${ImGuiFileDialog_SOURCE_DIR}/*.cpp
 		${ImGuiFileDialog_SOURCE_DIR}/*.h)

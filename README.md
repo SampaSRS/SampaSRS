@@ -9,11 +9,11 @@ The code has the following build dependencies
 - CMake (3.14 or later)
 - [ROOT](https://root.cern/) (6.26 or later)
 - [libpcap](https://www.tcpdump.org/index.html)
-- SDL2 (for sampa_gui)
+- Latest compatible firmware version - 14
 
 ### Ubuntu dependencies
 
-    sudo apt install build-essential git cmake libpcap-dev libsdl2-dev
+    sudo apt install build-essential git cmake libpcap-dev
 
 ### Windows dependencies
 
@@ -31,7 +31,7 @@ To build you also need to pass the location of the extracted binaries to CMake:
 
 ### Cluster build
 
-It's possible to build only the reconstruction code to be able to run in a cluster environment, removing `libpcap` and `SDL2` as dependencies. To accomplish that run CMake with the following flags:
+It's possible to build only the reconstruction code to be able to run in a cluster environment, removing `libpcap` as a dependency. To accomplish that run CMake with the following flags:
 
     mkdir build && cd build
     cmake .. -DCMAKE_INSTALL_PREFIX=../install -DSAMPA_BUILD_ACQUISITION=OFF -DSAMPA_NATIVE_OPTIMIZATION=OFF
