@@ -56,11 +56,13 @@ bool sort_second(tuple<int, double, int, int >& p,
             return get<1>(p)>get<1>(q);
          }
 
+bool IsEqual(double i, double j) { return (i==j); }
+
 void Make_Cluster(std::vector<std::tuple<int, double, int, int >> hit,std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
 std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
 
 {  
-  double pitch = 0.390625; //pitch real = 0.390625
+  double pitch = 0.3906; //pitch real = 0.390625
   double x_pos=0;
   double E_total=0;
   double ClstTime = 0;
@@ -72,110 +74,51 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
   double CurrentEnergy = 0;
   bool ValidCluster;
 
-  double max_timediff_Emax = 2;
+  double max_timediff_Emax = 1;
 
   int LastTime = get<0>(hit[0]); 
   double LastPosition=get<1>(hit[0]);
   double LastEnergy=get<2>(hit[0]);
   bool NewCluster=get<3>(hit[0]);
   
+  std::vector <double> del_index = {};
 
   x_pos+=LastPosition*LastEnergy;
   E_total+= LastEnergy;
   ClstTime+=LastEnergy*LastTime;
 
-  for(int i=1; i<hit.size() ; i++ )
-  {
-    CurrentTime = get<0>(hit[i]); 
-    CurrentPos = get<1>(hit[i]); 
-    CurrentEnergy = get<2>(hit[i]);
-    ValidCluster = get<3>(hit[i]);
+  for(int i = 0; i<hit.size(); i++){
+    std::cout <<"Size of hit"<< hit.size() <<std::endl;
+    LastTime = get<0>(hit[i]); 
+    LastPosition=get<1>(hit[i]);
+    LastEnergy=get<2>(hit[i]);
+    NewCluster=get<3>(hit[i]);
+    std::cout<<"This " <<get<0>(hit[i]) << " "<< get<1>(hit[i]) <<" "<< get<2>(hit[i]) <<" "<<get<3>(hit[i]) <<std::endl;
 
-      //If the time difference between nighboors is greater than max_timediff_Emax
-        if(abs(CurrentTime-LastTime)>max_timediff_Emax)
-        {
-          //If the cluster is valid close the cluster.
-          if(NewCluster)
-          {
-            ClustSize.push_back(ClstSize);
-            ClustTime.push_back(ClstTime/E_total);
-            ClustPosX.push_back(x_pos/E_total);
-            ClustEnergy.push_back(E_total);
-            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
-          }
-          LastPosition=CurrentPos;
-          LastTime = CurrentTime;
-          LastEnergy=CurrentEnergy;
-          ClstSize=1;
-          x_pos=0;
-          ClstTime=0;
-          E_total=0;
-          NewCluster=false;
-          x_pos+=CurrentEnergy*CurrentPos;
-          ClstTime+=CurrentEnergy*CurrentTime;
-          E_total+=CurrentEnergy;
-          if(ValidCluster)
-          {
-            NewCluster=true;
-          }
-          ClstID++;
-
-        }
-        else
-        {
-        if(abs(CurrentPos-LastPosition)>pitch)
-        {
-          if(NewCluster)
-          {
-            ClustSize.push_back(ClstSize);
-            ClustTime.push_back(ClstTime/E_total);
-            ClustPosX.push_back(x_pos/E_total);
-            ClustEnergy.push_back(E_total);
-            // std::cout << "ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl; 
-          }
-          LastPosition = CurrentPos;
-          LastTime = CurrentTime;
-          LastEnergy = CurrentEnergy;
-          ClstSize = 1;
-          x_pos = 0;
-          ClstTime = 0;
-          E_total = 0;
-          NewCluster = false;
-          x_pos += CurrentEnergy*CurrentPos;
-          ClstTime += CurrentEnergy*CurrentTime;
-          E_total += CurrentEnergy;
-          if(ValidCluster)
-          {
-            NewCluster=true;
-          }
-          ClstID++;
-        }
-        else{
-        ClstTime+=CurrentEnergy*CurrentTime;
-        x_pos+=CurrentPos*CurrentEnergy;
-        E_total+=CurrentEnergy;
-        LastPosition=CurrentPos;
-        LastEnergy=CurrentEnergy;
-        LastTime = CurrentTime;
-        if(ValidCluster)
-          {
-          NewCluster=true;
-          }
-        ClstSize++;
-        }
+    for(int j=i+1; j<hit.size() ; j++ ){
+      std::cout<<"Next " <<get<0>(hit[j]) << " "<< get<1>(hit[j]) <<" "<< get<2>(hit[j]) <<" "<<get<3>(hit[j]) <<std::endl;
+      CurrentTime = get<0>(hit[j]); 
+      CurrentPos = get<1>(hit[j]); 
+      CurrentEnergy = get<2>(hit[j]); 
+      ValidCluster = get<3>(hit[j]); 
+      if( abs(LastTime-CurrentTime) <= max_timediff_Emax ){
+        std::cout <<"---yes----"<<std::endl;
+        del_index.push_back(j);
       }
+      else{
+        std::cout <<"---no----"<<std::endl;
+        
+        
+      }
+    }
+    for (unsigned k = del_index.size(); k-- > 0; ){
+    std::cout << k <<"-------------------------"<< del_index.at(k) <<std::endl;
+    hit.erase(hit.begin()+del_index.at(k));
+    }
+    del_index.clear();
 
   }
 
-  //in case the cluster has a single element or it reached the end
-  if(NewCluster)
-    {
-    ClustSize.push_back(ClstSize);
-    ClustTime.push_back(ClstTime/E_total);
-    ClustPosX.push_back(x_pos/E_total);
-    ClustEnergy.push_back(E_total);
-    // std::cout << ">>>>>>>>>ClustID: "<<ClstID<< " ClustSize: "<< ClstSize << " " << " ClustTime: "<< ClstTime/E_total << " "<<x_pos/E_total << " " << E_total << std::endl;  
-    }
       
 
 }
@@ -262,7 +205,7 @@ int main(int argc, char *argv[])
   bool evt_ok=false;
  
 int event_id = 0;
-  while (reader.Next()) 
+  while (reader.Next() && event_id < 15)  
   {
     std::fill( std::begin( sum_cm ), std::end( sum_cm ), 0 );
     std::fill( std::begin( n_chns ), std::end( n_chns ), 0 );
@@ -288,6 +231,7 @@ int event_id = 0;
       E_max=0;
       T_max=0;
       E_int=0;
+      evt_ok=false;
       // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       // for (size_t j = 2; j < event_words[i].size(); ++j) {
@@ -315,24 +259,24 @@ int event_id = 0;
       hit.push_back(make_tuple(T_max, x[i], E_int, evt_ok)); 
       }
 
-      evt_ok=false;
+      
     }
-    // std::cout <<"=============begin====================="<<std::endl;
-    //  for(int y=0; y<hit.size() ; y++ )
-    //  {
-    //   std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
-    //  }
-    // std::cout <<"=============sorted====================="<<std::endl;
+    std::cout <<"=============begin====================="<<std::endl;
+     for(int y=0; y<hit.size() ; y++ )
+     {
+      std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
+     }
+    std::cout <<"=============sorted====================="<<std::endl;
      
     std::sort(hit.begin(),hit.end(), sort_second);
     std::sort(hit.begin(), hit.end());
     
 
-  //    for(int y=0; y<hit.size() ; y++ )
-  //    {
-  //     std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
-  //    }
-  // std::cout <<"=============end====================="<<std::endl;
+     for(int y=0; y<hit.size() ; y++ )
+     {
+      std::cout <<get<0>(hit[y]) << " "<< get<1>(hit[y]) <<" "<< get<2>(hit[y]) <<" "<<get<3>(hit[y]) <<std::endl;
+     }
+    std::cout <<"=============end====================="<<std::endl;
 
   
     if(!hit.empty())
