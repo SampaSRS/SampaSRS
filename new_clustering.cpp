@@ -62,7 +62,7 @@ void Make_Cluster(std::vector<std::tuple<int, double, int, int >> hit,std::vecto
 std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
 
 {  
-  double pitch = 0.3906; //pitch real = 0.390625
+  double pitch = 0.390625; //pitch real = 0.390625
   double x_pos=0;
   double E_total=0;
   double ClstTime = 0;
@@ -93,7 +93,7 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
     LastPosition=get<1>(hit[i]);
     LastEnergy=get<2>(hit[i]);
     NewCluster=get<3>(hit[i]);
-    std::cout<<"This " <<get<0>(hit[i]) << " "<< get<1>(hit[i]) <<" "<< get<2>(hit[i]) <<" "<<get<3>(hit[i]) <<std::endl;
+    std::cout<<"Starting here: " <<get<0>(hit[i]) << " "<< get<1>(hit[i]) <<" "<< get<2>(hit[i]) <<" "<<get<3>(hit[i]) <<std::endl;
 
     for(int j=i+1; j<hit.size() ; j++ ){
       std::cout<<"Next " <<get<0>(hit[j]) << " "<< get<1>(hit[j]) <<" "<< get<2>(hit[j]) <<" "<<get<3>(hit[j]) <<std::endl;
@@ -102,8 +102,14 @@ std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
       CurrentEnergy = get<2>(hit[j]); 
       ValidCluster = get<3>(hit[j]); 
       if( abs(LastTime-CurrentTime) <= max_timediff_Emax ){
+        if( abs(LastPosition-CurrentPos) <= 2*pitch ){
         std::cout <<"---yes----"<<std::endl;
         del_index.push_back(j);
+
+        }
+        else{
+        std::cout <<"---no----"<<std::endl;
+        }
       }
       else{
         std::cout <<"---no----"<<std::endl;
