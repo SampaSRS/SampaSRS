@@ -71,7 +71,7 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
   int CurrentTime =0, LastTime = 0;
   double CurrentPosition =0, LastPosition = 0;
   double CurrentEnergy = 0, LastEnergy = 0;
-  int TrueClst = 0;
+  int ValidCluster = 0, TrueClst = 0;
   
   std::vector <double> del_index = {};
 
@@ -198,6 +198,8 @@ int main(int argc, char *argv[])
   
 
   Map_pedestal(pedestal_file, map_of_pedestals); // change the mapping on mapping.hpp for a diferent detector
+  
+
 
   int gl_chn = 0;
   int max_word = 0;
@@ -206,6 +208,7 @@ int main(int argc, char *argv[])
   int T_max = 0;
   int T_0 = 0;
   int signal_length = 0;
+  double T_rec = 0;
 
   std::vector <int> CSize ={};
   std::vector <double> ClstPosX ={};
@@ -214,7 +217,8 @@ int main(int argc, char *argv[])
   std::array<double, 1024> n_chns={};
   std::array<double, 1024> sum_cm={};
 
-
+  std::vector <double> InterpolX ={};
+  std::vector <double> InterpolY ={};
 
   std::vector <std::tuple<int, double, int, int> > hit={}; 
 
@@ -244,6 +248,7 @@ int event_id = 0;
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
       // std::cout <<event_words.size()<<std::endl;
+      // std::cout <<event_words[i].size()<<std::endl;
       E_max=0;
       T_max=0;
       E_int=0;
@@ -267,13 +272,25 @@ int event_id = 0;
             }
           }
         }
-        
-
       }
       
-      if(E_max>1 && E_max<1024){ //checking values and filling vectors
-      hit.push_back(make_tuple(T_max, x[i], E_int, evt_ok)); 
+      
+      if(T_max>3 && event_words[i].size() > T_max){
+        T_rec = ((event_words[i][T_max+1]*(T_max+1.0))+(event_words[i][T_max]*T_max)+(event_words[i][T_max-1]*(T_max-1.0)))/(event_words[i][T_max+1]+event_words[i][T_max]+event_words[i][T_max-1]);
+        // std::cout << event_words[i][T_max-1] << " " <<T_max-1<<" "<< event_words[i][T_max] << " "<<T_max<<" "<< event_words[i][T_max+1] <<" "<< T_max+1<<" "<<T_rec<<" "<<T_max<<" " <<std::endl;
       }
+      else if(E_max>0){ 
+        T_rec = ((event_words[i][T_max+1]*(T_max+1.0))+(event_words[i][T_max]*T_max)+(event_words[i][T_max-1]*(T_max-1.0)))/(event_words[i][T_max+1]+event_words[i][T_max]+event_words[i][T_max-1]);
+        // std::cout << event_words[i][T_max-1] << " " <<T_max-1<<" "<< event_words[i][T_max] << " "<<T_max<<" "<< event_words[i][T_max+1] <<" "<< T_max+1<<" "<<T_rec<<" "<<T_max<<" " <<std::endl;
+      }
+      
+      if(E_max>0 && E_max<1024){ //checking values and filling vectors
+      hit.push_back(make_tuple(T_rec, x[i], E_int, evt_ok)); 
+      }
+      // else{
+      //   std::cout << T_max<<" "<<E_int<<"BREAKKKKKKKKKKKKKK" << std::endl;
+      //   break;
+      // }
 
       
     }
