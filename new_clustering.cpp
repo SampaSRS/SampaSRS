@@ -60,7 +60,7 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
 
 {  
   double pitch = 0.390625; //pitch real = 0.390625
-  double max_timediff_Emax = 1;
+  double max_timediff_Emax = 2;
 
   double x_pos=0;
   double E_total=0;
@@ -97,13 +97,15 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
       CurrentPosition = get<1>(hit[j]); 
       CurrentEnergy = get<2>(hit[j]); 
       ValidCluster = get<3>(hit[j]); 
-      if( abs(LastTime-CurrentTime) <= max_timediff_Emax ){
-        if( abs(LastPosition-CurrentPosition) <= 2*pitch ){
+      if( abs(LastPosition-CurrentPosition) <= 2*pitch ){
+        if( abs(LastTime-CurrentTime) <= max_timediff_Emax ){
           TrueClst += ValidCluster;
           x_pos += CurrentPosition*CurrentEnergy;
           E_total += CurrentEnergy;
           ClstTime += CurrentTime*CurrentEnergy;
           ClstSize++;
+          LastTime = CurrentTime; 
+          LastPosition = CurrentPosition;
           // std::cout <<"---yes----"<<std::endl;
           del_index.push_back(j);
         }
@@ -285,7 +287,7 @@ int event_id = 0;
       }
       
       if(E_max>0 && E_max<1024){ //checking values and filling vectors
-      hit.push_back(make_tuple(T_rec, x[i], E_int, evt_ok)); 
+      hit.push_back(make_tuple(T_max, x[i], E_int, evt_ok)); 
       }
       // else{
       //   std::cout << T_max<<" "<<E_int<<"BREAKKKKKKKKKKKKKK" << std::endl;
@@ -302,7 +304,7 @@ int event_id = 0;
     // std::cout <<"=============sorted====================="<<std::endl;
      
     std::sort(hit.begin(),hit.end(), sort_second);
-    std::sort(hit.begin(), hit.end());
+    // std::sort(hit.begin(), hit.end());
     
 
     //  for(int y=0; y<hit.size() ; y++ )
