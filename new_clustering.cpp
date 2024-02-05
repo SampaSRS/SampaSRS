@@ -7,6 +7,10 @@
 #include <filesystem>
 #include <bits/stdc++.h> 
 
+#include <sampasrs/mapping.hpp>
+#include <sampasrs/cluster.hpp>
+
+
 #include "TFile.h"
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
@@ -14,39 +18,7 @@
 
 using namespace std;
 
-void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std::pair<double, double>> &my_map)
-{
-    // Create an unordered_map of three values glchn(sampa*32+Chn)    
-    std::ifstream mapfile;
-    int glchn=0;
-    double baseline=0;
-    double sigma=0;
-    mapfile.open(pedestal_file);
-    while (true) 
-    { 
-      mapfile >> glchn;
-      mapfile >> baseline;
-      mapfile >> sigma;
-      if(sigma==0)
-      {
-        my_map[glchn] = {baseline,1023}; //supress the channels with sigma == 0 / are frozen
-      }
-      else
-      {
-        my_map[glchn] = {baseline,sigma};
-      }
-      // std::cout << glchn << " " << my_map[glchn].first <<" "<<my_map[glchn].second<<std::endl;
-      
 
-      if( mapfile.eof() ) 
-      {
-        break;
-      }
-    }
-    mapfile.close();
-  
-
-}
 
 bool sort_second(tuple<int, double, int, int >& p,
          tuple<int, double, int, int >& q){
@@ -55,91 +27,7 @@ bool sort_second(tuple<int, double, int, int >& p,
 
 
 
-void Make_Cluster(std::vector<std::tuple<int, double, int, int >> hit,std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
-std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
 
-{  
-  double pitch = 0.390625; //pitch real = 0.390625
-  double max_timediff_Emax = 2;
-
-  double x_pos=0;
-  double E_total=0;
-  double ClstTime = 0;
-  int ClstID=0;
-  int ClstSize=1;
-
-  int CurrentTime =0, LastTime = 0;
-  double CurrentPosition =0, LastPosition = 0;
-  double CurrentEnergy = 0, LastEnergy = 0;
-  int ValidCluster = 0, TrueClst = 0;
-  
-  std::vector <double> del_index = {};
-
-
-  for(int i = 0; i<hit.size(); i++){
-    // std::cout <<"Size of hit"<< hit.size() <<std::endl;
-    LastTime = get<0>(hit[i]); 
-    LastPosition=get<1>(hit[i]);
-    LastEnergy=get<2>(hit[i]);
-    TrueClst=get<3>(hit[i]);
-
-    ClstSize = 1;
-    x_pos += LastPosition*LastEnergy;
-    E_total += LastEnergy;
-    ClstTime += LastTime*LastEnergy;
-
-
-    // std::cout<<"Starting here: " <<get<0>(hit[i]) << " "<< get<1>(hit[i]) <<" "<< get<2>(hit[i]) <<" "<<get<3>(hit[i]) <<std::endl;
-
-    for(int j=i+1; j<hit.size() ; j++ ){
-      // std::cout<<"Next " <<get<0>(hit[j]) << " "<< get<1>(hit[j]) <<" "<< get<2>(hit[j]) <<" "<<get<3>(hit[j]) <<std::endl;
-      CurrentTime = get<0>(hit[j]); 
-      CurrentPosition = get<1>(hit[j]); 
-      CurrentEnergy = get<2>(hit[j]); 
-      ValidCluster = get<3>(hit[j]); 
-      if( abs(LastPosition-CurrentPosition) <= 2*pitch ){
-        if( abs(LastTime-CurrentTime) <= max_timediff_Emax ){
-          TrueClst += ValidCluster;
-          x_pos += CurrentPosition*CurrentEnergy;
-          E_total += CurrentEnergy;
-          ClstTime += CurrentTime*CurrentEnergy;
-          ClstSize++;
-          LastTime = CurrentTime; 
-          LastPosition = CurrentPosition;
-          // std::cout <<"---yes----"<<std::endl;
-          del_index.push_back(j);
-        }
-      //   else{
-      //   std::cout <<"---no----"<<std::endl;
-      //   }
-      // }
-      // else{
-      //   // std::cout <<"---no----"<<std::endl;
-        
-        
-      }
-    }
-    for (unsigned k = del_index.size(); k-- > 0; ){
-      // std::cout << k <<"-------------------------"<< del_index.at(k) <<std::endl;
-      hit.erase(hit.begin()+del_index.at(k));
-    }
-    del_index.clear();
-    if(TrueClst){
-      ClustSize.push_back(ClstSize);
-      ClustPos.push_back(x_pos/E_total);
-      ClustEnergy.push_back(E_total);
-      ClustTime.push_back(ClstTime/E_total);
-    }
-    x_pos = 0;
-    E_total = 0;
-    ClstTime = 0;
-    ClstSize = 1;
-    TrueClst = 0;
-  }
-
-      
-
-}
 
 int main(int argc, char *argv[])
 {
@@ -277,25 +165,14 @@ int event_id = 0;
       }
       
       
-      if(T_max>3 && event_words[i].size() > T_max){
-        T_rec = ((event_words[i][T_max+1]*(T_max+1.0))+(event_words[i][T_max]*T_max)+(event_words[i][T_max-1]*(T_max-1.0)))/(event_words[i][T_max+1]+event_words[i][T_max]+event_words[i][T_max-1]);
-        // std::cout << event_words[i][T_max-1] << " " <<T_max-1<<" "<< event_words[i][T_max] << " "<<T_max<<" "<< event_words[i][T_max+1] <<" "<< T_max+1<<" "<<T_rec<<" "<<T_max<<" " <<std::endl;
-      }
-      else if(E_max>0){ 
-        T_rec = ((event_words[i][T_max+1]*(T_max+1.0))+(event_words[i][T_max]*T_max)+(event_words[i][T_max-1]*(T_max-1.0)))/(event_words[i][T_max+1]+event_words[i][T_max]+event_words[i][T_max-1]);
-        // std::cout << event_words[i][T_max-1] << " " <<T_max-1<<" "<< event_words[i][T_max] << " "<<T_max<<" "<< event_words[i][T_max+1] <<" "<< T_max+1<<" "<<T_rec<<" "<<T_max<<" " <<std::endl;
-      }
       
-      if(E_max>0 && E_max<1024){ //checking values and filling vectors
+      if(E_max>0 && E_max<1024)
+      { //checking values and filling vectors
       hit.push_back(make_tuple(T_max, x[i], E_int, evt_ok)); 
       }
-      // else{
-      //   std::cout << T_max<<" "<<E_int<<"BREAKKKKKKKKKKKKKK" << std::endl;
-      //   break;
-      // }
-
-      
+            
     }
+
     // std::cout <<"=============begin====================="<<std::endl;
     //  for(int y=0; y<hit.size() ; y++ )
     //  {
