@@ -111,10 +111,11 @@ int main(int argc, const char* argv[])
   bool PlotPedestal=true;
   bool Gen_ZS_file=true;
   const char* input_name = argv[1];
+  std::string input_name_str = input_name;
 
-  auto input_path = std::filesystem::path(input_name);
-  auto rootfname = input_path.replace_extension(".txt").string();
-  auto zsfname = input_path.replace_extension("ZS_config.txt").string();
+  std::string rootfname=input_name_str.substr(0,input_name_str.find_last_of('.'))+"_pedestal.txt";
+  std::string zsfname=input_name_str.substr(0,input_name_str.find_last_of('.'))+"_ZSconfig.txt";
+  
 
   TFile file(input_name, "READ");
   TTreeReader reader("waveform", &file);
