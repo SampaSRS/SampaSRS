@@ -93,72 +93,51 @@ int event_id = 0;
       T_max=0;
       j=0;
       gl_chn = 32*(sampa[i]-8)+channel[i];
-      std::cout <<"gl_chn: ["<<gl_chn<<"] ";
+      if(map_of_pedestals[gl_chn].first !=0 && map_of_pedestals[gl_chn].second != 1023)
+      {
+        std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second<<"} ";
 
-      while(j < event_words[i].size()) {
-        Num_words = event_words[i][j];
-        std::cout << Num_words <<" [ ";
-          for(size_t k = 0; k<= Num_words; k++) {
-            j++;
-            if(k == 0)
-              {
-                T_0 = event_words[i][j];
-              }
-            else
-              {
-                if(event_words[i][j] > 0 && event_words[i][j]<1024)
-                E_int+=event_words[i][j];
-                else
+        while(j < event_words[i].size()) {
+          Num_words = event_words[i][j];
+          std::cout << Num_words <<" [ ";
+            for(size_t k = 0; k<= Num_words; k++) {
+              j++;
+              if(k == 0)
                 {
-                  //discard event
-                  bad_event=true;
-                  break; //bad value encountered
+                  T_0 = event_words[i][j];
                 }
-              }
-            std::cout<<event_words[i][j]<<" "; 
+              else
+                {
+                  if(event_words[i][j] > 0 && event_words[i][j]<1024)
+                  E_int+=event_words[i][j]-map_of_pedestals[gl_chn].first;
+                  else
+                  {
+                    //discard event
+                    bad_event=true;
+                    break; //bad value encountered
+                  }
+                }
+              std::cout<<event_words[i][j]<<" "; 
+            }
+          if(bad_event) {
+            bad_event=false;
+            num_bad_evt++;
+            break;
           }
-        if(bad_event) {
-          bad_event=false;
-          num_bad_evt++;
-          break;
+          std::cout <<" ] ---* ";
+          std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
+          E_int=0;
+          j++;
         }
-        std::cout <<" ] ---* ";
-        std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
-        E_int=0;
-        j++;
+
+        // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
+        hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
+
+        evt_ok=false;
       }
-
-      // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
-      hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
-
-      evt_ok=false;
     }
     std::sort(hit.begin(), hit.end());    
-    // if(evt_ok==true)
-    // {
 
-    // std::cout << event_id <<std::endl;
-    // if(!hit.empty())
-    // {
-    //   Make_Cluster(hit, CSize, ClstPosX, ClstEnergy);
-    // }
-
-    // for(int j = 0; j<ClstPosX.size(); j++)
-    // {
-    //   ClstID = j;
-    //   trgID = event_id;
-    //   ClstSize = CSize.at(j);
-    //   xcm = ClstPosX.at(j);
-    //   E = ClstEnergy.at(j);
-    //   // std::cout << ClstID <<" "<<ClstSize<<" "<<xcm<<" "<<E<<std::endl;
-    //   MyTree->Fill();
-    // }
-
-    
-    // CSize.clear();
-    // ClstEnergy.clear();
-    // ClstPosX.clear();
-    // hit.clear();
     
     evt_ok=false;
     

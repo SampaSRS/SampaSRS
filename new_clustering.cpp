@@ -26,9 +26,6 @@ bool sort_second(tuple<int, double, int, int >& p,
          }
 
 
-
-
-
 int main(int argc, char *argv[])
 {
   time_t start = 0;
