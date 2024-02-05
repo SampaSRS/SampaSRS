@@ -8,54 +8,13 @@
 #include <fstream>
 #include <filesystem>
 
+#include <sampasrs/mapping.hpp>
+#include <sampasrs/cluster.hpp>
 
 #include "TFile.h"
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
 
-
-void Map_pedestal(std::string const& pedestal_file, std::unordered_map<int, std::pair<double, double>> &my_map)
-{
-    // Create an unordered_map of three values glchn(sampa*32+Chn)    
-    std::ifstream mapfile;
-    int glchn=0;
-    double baseline=0;
-    double sigma=0;
-    mapfile.open(pedestal_file);
-    while (true) 
-    { 
-      mapfile >> glchn;
-      mapfile >> baseline;
-      mapfile >> sigma;
-      if(sigma==0)
-      {
-        my_map[glchn] = {baseline,1023}; //canais vem com baseline com todos valores igual sigma==0/ matar esse canal
-      }
-      else
-      {
-        my_map[glchn] = {baseline,sigma};
-      }
-      // std::cout << glchn << " " << my_map[glchn].first <<" "<<my_map[glchn].second<<std::endl;
-      
-
-      if( mapfile.eof() ) 
-      {
-        break;
-      }
-    }
-    mapfile.close();
-  
-    // for(int k=0;k<my_map.size();k++) {std::cout << my_map[k].first<<" "<<my_map[k].second <<std::endl;}
-}
-
-
-// void Make_Cluster(std::vector<std::pair<double, std::pair<int,int>>>hit,std::vector <int> &ClustSize,
-// std::vector <double> &ClustPosX,std::vector <double> &ClustEnergy)
-
-// { 
-//   int max_time_duration = 10; //10 time bins ->correspodent to 1us at 10 MSPs or 0.5us at 20MSPs 
-//   int max_time_separation = 50; //50 time bins ->correspodent to 5us at 10 MSPs or 2.5us at 20MSPs 
-// }
 
 int main(int argc, char *argv[])
 {
@@ -63,18 +22,23 @@ int main(int argc, char *argv[])
   time_t end =0;
   time(&start);
 
-if(argc != 2)
+if(argc != 3)
 {
-  std::cout << "Usage =: ./zs_clustering.cpp <data_file.root>" << std::endl;
+  std::cout << "Usage =: ./zs_clustering <file_pedestal.txt> <data_file.root>" << std::endl;
   return 0;
 }
 
-std::string file_name = argv[1];
+std::string pedestal_file = argv[1];
+std::string file_name = argv[2];
    
-if (file_name.empty()) {
+if (file_name.empty() || pedestal_file.empty()) {
   std::cout <<"Empty files?" << std::endl;
   return 0; // just a precaution
 }
+
+std::unordered_map<int, std::pair<double, double>> map_of_pedestals = {};
+Map_pedestal(pedestal_file, map_of_pedestals); // change the mapping on mapping.hpp for a diferent detector
+
 auto input_path = std::filesystem::path(file_name);
 auto Clstrootfname = input_path.replace_extension("ZS_Clst.root").string();
 TFile file(file_name.data(), "READ");
