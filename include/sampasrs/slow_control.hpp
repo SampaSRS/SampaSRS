@@ -91,7 +91,7 @@ inline CommandList get_commands();
 
 class SlowControl {
   public:
-  SlowControl()
+  SlowControl() 
       : m_command_list {get_commands()}
   {
   }
@@ -483,8 +483,8 @@ namespace commands {
     }
   };
 
-  struct SetZeroOffset : Command {
-    explicit SetZeroOffset()
+  struct PedestalSubtraction : Command {
+    explicit PedestalSubtraction()
         : Command("Set the zero suppression offset for each channels")
     {
     }
@@ -500,7 +500,7 @@ namespace commands {
       // Zero suppression uses 2 bit resolution
       auto val = args[2] << 2u;
 
-      return {channel_write(sampa, channel, ChannelRegister::ZSOFF, val)};
+      return {channel_write(sampa, channel, ChannelRegister::FPD, val)};
     }
   };
 
@@ -559,7 +559,7 @@ get_commands()
   commands["word_length"]          = std::make_unique<WordLength>();
   commands["zero_suppression"]     = std::make_unique<ZeroSuppression>();
   commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
-  commands["set_zero_offset"]      = std::make_unique<SetZeroOffset>();
+  commands["pedestal_subtraction"] = std::make_unique<PedestalSubtraction>();
   commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
   commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
   commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
