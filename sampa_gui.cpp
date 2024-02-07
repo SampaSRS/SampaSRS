@@ -64,7 +64,7 @@ class Graphs {
     int max_channel = 0;
 
     for (size_t waveform = 0; waveform < event.waveform_count(); ++waveform) {
-      for (size_t word = 0; word < event.word_count(waveform); ++word) {
+      for (size_t word = 1; word < event.word_count(waveform); ++word) { //start from 1 since the word 0 this the number of words
         const int channel = event.get_header(selected_waveform).global_channel();
         min_channel = std::min(min_channel, channel);
         max_channel = std::max(max_channel, channel + 1);
