@@ -181,6 +181,7 @@ int main(int argc, const char* argv[])
     }
     else {
       ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
+      ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
     }
     Has_pedestal_vec[32*(pedestal.sampa-8)+pedestal.channel]=true; //fill the channels with true
   }
