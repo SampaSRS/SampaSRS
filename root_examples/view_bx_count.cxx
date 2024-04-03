@@ -17,7 +17,7 @@
 
 
 
-void view_bx_count(std::string_view file_name = "/home/geovaneg/Documents/SampaSRS/build/Teste_003_Hybridv3_Placa2_segundadaptadora-0000.root")
+void view_bx_count(std::string_view file_name = "/home/geovaneg/Documents/SampaSRS/build/RunV2_Board1_003-0000.root")
 {
   if (file_name.empty()) {
     return; // just a precaution
