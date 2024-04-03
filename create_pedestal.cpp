@@ -6,6 +6,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <sys/types.h>
 #include <vector>
 
 #include <TFile.h>
@@ -29,11 +30,11 @@ void make_plot(const char *filename)
     double sigma=0;
     double meany;
     double sigmay;
-    TH1D* meanHist =new TH1D("Mean", "Mean", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
-    TH1D* sigmaHist =new TH1D("Sigma", "Sigma", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* Baseline =new TH1D("Mean", "Mean", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* Noise =new TH1D("Sigma", "Sigma", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
 
-    TH1D* meanHist2 =new TH1D("Mean2", "Mean2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
-    TH1D* sigmaHist2 =new TH1D("Sigma2", "Sigma2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* MeanHist =new TH1D("Mean2", "Mean2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* SigmaHist =new TH1D("Sigma2", "Sigma2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
 
     std::ifstream infile;
     infile.open (filename);
@@ -48,11 +49,11 @@ void make_plot(const char *filename)
     infile>>bin;
     infile>>mean;
     infile>>sigma;
-    meanHist->SetBinContent(bin+1,mean);
-    sigmaHist->SetBinContent(bin+1,sigma);
+    Baseline->SetBinContent(bin+1,mean);
+    Noise->SetBinContent(bin+1,sigma);
 
-    meanHist2->Fill(mean);
-    sigmaHist2->Fill(sigma);
+    MeanHist->Fill(mean);
+    SigmaHist->Fill(sigma);
     
     //  std::cout << bin << " " << mean << " " <<sigma << std::endl;  
     }
@@ -62,29 +63,36 @@ void make_plot(const char *filename)
     auto *c1 = new TCanvas("c1","c1",1600, 800);
     c1->Divide(2,1);
     c1->cd(1);
-    meanHist->Draw();
-    meany=meanHist2->GetMean();
-    sigmay=meanHist2->GetRMS();
-    meanHist->SetTitle("Baseline; Channel; Mean value (ADC channels)");
 
+    
+    
+    meany=MeanHist->GetMean();
+    sigmay=MeanHist->GetRMS();
+    Baseline->SetTitle("Baseline; Channel; Mean value (ADC channels)");
+    
+    char buffer[200];
+    sprintf(buffer,"Mean: %.01lf \\pm  %.01lf", meany,sigmay);
+    TLatex latex;
+    latex.SetTextFont(12);
+
+
+    Baseline->GetYaxis()->SetRangeUser(0,Baseline->GetMaximum()*1.1);
+    Baseline->Draw();
+    latex.DrawLatex(Baseline->GetNbinsX()/3,Baseline->GetMaximum()/2, buffer);
+    
     std::cout<<"Baseline mean: "<< meany <<"/baseline standard deviation: "<<sigmay<<" "<<std::endl;
     
-    // TLatex latex;   
-    // latex.SetTextSize(0.05);
-    // latex.SetTextAlign(13);  //align at top
-    // latex.SetTextFont(12);
-
-    // char* buf = new char[100];
-	  // sprintf(buf,"Mean = %4.1f", meany);
-    // latex.DrawLatex(61,150,buf); //Escreve sigma na imagem
-    // sprintf(buf,"#sigma = %4.1f", sigmay);
-    // latex.DrawLatex(61,140,buf); //Escreve sigma na imagem
 
     c1->cd(2);
-    sigmaHist->Draw();
-    sigmaHist->SetTitle("Noise; Channel; Std value (ADC channels)");
-    meany=sigmaHist2->GetMean();
-    sigmay=sigmaHist2->GetRMS();
+    
+    Noise->GetYaxis()->SetRangeUser(0,Noise->GetMaximum()*1.1);
+    Noise->Draw();
+    Noise->SetTitle("Noise; Channel; Std value (ADC channels)");
+    meany=SigmaHist->GetMean();
+    sigmay=SigmaHist->GetRMS();
+
+    sprintf(buffer,"Mean: %.01lf \\pm  %.01lf", meany,sigmay);
+    latex.DrawLatex(Noise->GetNbinsX()/3,Noise->GetMaximum()/2, buffer);
 
     std::cout<<"Noise mean: "<< meany <<"/Noise standard deviation: "<<sigmay<<" "<<std::endl;
     
@@ -177,11 +185,14 @@ int main(int argc, const char* argv[])
     TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
     //ZS cut = baseline+3sigma ATTENTION: SAMPA index is sent from 8 to 11 but needs to be written from 0 to 4 (see sampa-8).
     if(var==0){ //channel locked - suppress it at maximum
-      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1023 << "\n"; 
+      if(pedestal.sampa-8>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1023 << "\n"; 
     }
     else {
-      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
-      ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
+      // if(pedestal.sampa-8>=0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<u_int32_t>(mean+5*std::sqrt(var) )<< "\n";
+            if(pedestal.sampa-8>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 200 << "\n";
+      // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
+      // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 50 << "\n";
+
     }
     Has_pedestal_vec[32*(pedestal.sampa-8)+pedestal.channel]=true; //fill the channels with true
   }
