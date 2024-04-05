@@ -15,6 +15,49 @@
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
 
+struct Hits_evt {
+  int gl_chn;
+  std::vector <int> time;
+  std::vector <int> word;
+  double x_pos;
+  int E_tot;
+};
+
+
+void Make_Cluster(std::vector <Hits_evt> hits, std::vector <int> &ClustSize,
+std::vector <double> &ClustPosX, std::vector <double> &ClustEnergy)
+
+{  
+  double pitch = 0.390625; //pitch real = 0.390625
+  double x_pos=0;
+  double E_total=0;
+  int ClstID=0;
+  int ClstSize=1;
+
+
+  for (int i = 0; i< hits.size(); i++)
+  {
+    std::cout <<  "----begin---" << std::endl;
+    std::cout << hits[i].gl_chn<<" "<<hits[i].x_pos <<  std::endl;
+
+    for(int j = 0; j<hits[i].time.size(); j++)
+    {
+      std::cout<< hits[i].time[j] <<" ";
+    }
+    std::cout << std::endl;
+      for (int j =0; j< hits[i].word.size(); j++)
+    {
+      std::cout<< hits[i].word[j] <<" ";
+    }
+    std::cout << std::endl;
+    std::cout <<"----end---"<<std::endl;
+    
+  }
+}
+
+
+
+
 
 int main(int argc, char *argv[])
 {
@@ -75,12 +118,14 @@ std::vector <double> ClstPosX ={};
 std::vector <double> ClstEnergy ={};
 
 
-std::vector <std::pair <double, std::pair<int, int>>> hit ={};
+std::vector <int> time_hit;
+std::vector <int> word_hit;
 
 bool evt_ok=false;
 bool bad_event=false;
 int num_bad_evt = 0;
- 
+
+std::vector <Hits_evt> hits; 
 int event_id = 0;
   while (reader.Next()) 
   {
@@ -95,7 +140,7 @@ int event_id = 0;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       if(map_of_pedestals[gl_chn].first !=0 && map_of_pedestals[gl_chn].second != 1023)
       {
-        std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second<<"} ";
+        std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first<<"} ";
 
         while(j < event_words[i].size()) {
           Num_words = event_words[i][j];
@@ -109,7 +154,14 @@ int event_id = 0;
               else
                 {
                   if(event_words[i][j] > 0 && event_words[i][j]<1024)
-                  E_int+=event_words[i][j]-map_of_pedestals[gl_chn].first;
+                  {
+                    if(event_words[i][j]-map_of_pedestals[gl_chn].first>2)
+                    {
+                      time_hit.push_back(T_0+k-1);  //The sampa structure is [Number of samples, Initial time, words ....] so K must be reduced by 1 
+                      word_hit.push_back(event_words[i][j]-map_of_pedestals[gl_chn].first);
+                      E_int+=event_words[i][j]-map_of_pedestals[gl_chn].first;
+                    }
+                  }
                   else
                   {
                     //discard event
@@ -126,18 +178,18 @@ int event_id = 0;
           }
           std::cout <<" ] ---* ";
           std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
+          if(time_hit.size() >0 && word_hit.size() >0)
+          {
+            hits.push_back({gl_chn, time_hit, word_hit, x[i], E_int});
+          }
+          time_hit.clear();
+          word_hit.clear();
           E_int=0;
           j++;
         }
-
-        // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
-        hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
-
         evt_ok=false;
       }
     }
-    std::sort(hit.begin(), hit.end());    
-
     
     evt_ok=false;
     
@@ -149,6 +201,11 @@ int event_id = 0;
 
     // }
     std::cout<<std::endl;
+    if(hits.size()>0)
+    {
+      Make_Cluster(hits, CSize, ClstPosX, ClstEnergy);
+    }
+    hits.clear();
   } 
 
     //Escrever a nova TTree-----------------------------------------------
