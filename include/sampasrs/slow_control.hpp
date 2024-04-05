@@ -355,7 +355,7 @@ namespace commands {
     auto [low_byte, high_byte] = low_high_bytes(value);
 
     uint32_t channel_control = 1U << 6U; // Enable write
-    if (channel > 0) {
+    if (static_cast<int>(channel) >= 0) {
       channel_control |= get_bit_range<uint32_t, 0, 5>(channel); // set channel number
     } else {
       channel_control |= 1U << 5U; // broadcast to all channels
