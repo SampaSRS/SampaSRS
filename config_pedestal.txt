@@ -1,8 +1,8 @@
 stop
 reset_fec
 reset_sampas
-trigger_external
-#trigger_1hz
-word_length 500
+#trigger_external
+trigger_1hz
+word_length 400
 pretrigger 25
 #recebe 0, 1, 2, 3

@@ -170,28 +170,30 @@ int main(int argc, const char* argv[])
   ZSOutFile << "reset_sampas" << "\n";
   ZSOutFile << "trigger_external" << "\n";
   ZSOutFile << "pretrigger 25" << "\n";
-
+  ZSOutFile << "word_length 40" << "\n";
+  
   for (auto& [global_channel, pedestal] : channels) {
     const double mean = pedestal.sum / static_cast<double>(pedestal.count);
     const double var = pedestal.sum_squared / static_cast<double>(pedestal.count) - std::pow(mean, 2);
     TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
     //ZS cut = baseline+3sigma ATTENTION: SAMPA index is sent from 8 to 11 but needs to be written from 0 to 4 (see sampa-8).
     if(var==0){ //channel locked - suppress it at maximum
-      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1023 << "\n"; 
+      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 1023 << "\n"; 
     }
     else {
-      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
-      ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
+      ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<int>(mean+3*std::sqrt(var) )<< "\n";
+      // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
     }
-    Has_pedestal_vec[32*(pedestal.sampa-8)+pedestal.channel]=true; //fill the channels with true
+    Has_pedestal_vec[32*(pedestal.sampa)+pedestal.channel]=true; //fill the channels with true
   }
 
-  for(int i=0; i< Has_pedestal_vec.size(); i++)
-    {
-      if(!Has_pedestal_vec[i]){
-        ZSOutFile <<"set_zero_suppression "<< (int) i/32 << " " << i%32 << " " << 1023 << "\n";  //If the channel has no entry, suppress it at maximum (just in case)
-      }
-    }   
+  // for(int i=0; i< Has_pedestal_vec.size(); i++)
+  //   {
+  //     if(!Has_pedestal_vec[i]){
+  //       ZSOutFile <<"set_zero_suppression "<< (int) i/32 << " " << i%32 << " " << 1023 << "\n";  //If the channel has no entry, suppress it at maximum (just in case)
+  //     }
+  //   }
+
   TxtOutFile.close();
   ZSOutFile.close();
   if(PlotPedestal)
