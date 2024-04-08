@@ -3,6 +3,7 @@
 #include <iostream>
 #include <numeric>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <unordered_map>
 #include <fstream>
@@ -15,6 +16,10 @@
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
 
+const int max_time_window = 10; //maximum time difference before the maximum to be checked at 20MSps, 1 = 50ns 
+
+
+
 struct Hits_evt {
   int gl_chn;
   std::vector <int> time;
@@ -23,40 +28,126 @@ struct Hits_evt {
   int E_tot;
 };
 
-
-void Make_Cluster(std::vector <Hits_evt> hits, std::vector <int> &ClustSize,
-std::vector <double> &ClustPosX, std::vector <double> &ClustEnergy)
-
-{  
-  double pitch = 0.390625; //pitch real = 0.390625
-  double x_pos=0;
-  double E_total=0;
-  int ClstID=0;
-  int ClstSize=1;
-
-
-  for (int i = 0; i< hits.size(); i++)
-  {
-    std::cout <<  "----begin---" << std::endl;
-    std::cout << hits[i].gl_chn<<" "<<hits[i].x_pos <<  std::endl;
-
-    for(int j = 0; j<hits[i].time.size(); j++)
-    {
-      std::cout<< hits[i].time[j] <<" ";
-    }
-    std::cout << std::endl;
-      for (int j =0; j< hits[i].word.size(); j++)
-    {
-      std::cout<< hits[i].word[j] <<" ";
-    }
-    std::cout << std::endl;
-    std::cout <<"----end---"<<std::endl;
-    
-  }
+bool sort_by_chn(const Hits_evt& a, const Hits_evt& b)
+{
+    // smallest comes first
+    return a.x_pos < b.x_pos;
 }
 
 
 
+std::pair<int, int> GetMaxWord(std::vector <Hits_evt> hits)
+{
+
+  int max_word=0;
+  int max_channel=0;
+  int Last_word = 0;
+  for (int i = 0; i< hits.size(); i++)
+  {
+    for(int j = 0; j<hits[i].time.size(); j++)
+    {
+      if(hits[i].word[j]>Last_word)
+      {
+        max_word=j;
+        max_channel=i;
+        Last_word = hits[i].word[j];
+      }
+    }
+  }
+  return std::make_pair(max_channel, max_word);
+}
+
+
+void Make_Cluster(std::vector <Hits_evt> hits, std::vector <int> &ClustSize,std::vector <double> &ClustTime, 
+std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
+
+{  
+  double pitch = 0.390625; //pitch real = 0.390625
+  double xcm=0;
+  double E_total=0;
+  int ClstID=0;
+  int ClstSize=1;
+  int MaxNClust=0;
+  double ClstTime = 0;
+  std::vector <double> del_index = {};
+  std::vector <double> del_words = {};
+
+while(hits.size()>0)
+  {
+
+
+
+    auto max_idx = GetMaxWord(hits);
+    std::cout <<"New max: "<<max_idx.first <<" "<<max_idx.second <<std::endl;
+
+          for(int i = 0; i<hits.size(); i++)
+      {
+        std::cout <<"Index: "<< i <<" Position: "<<hits[i].x_pos <<std::endl;
+        for(int j = 0; j<hits[i].word.size(); j++){
+          if(i == max_idx.first && j == max_idx.second) std::cout <<"***T: "<<hits[i].time[j]<<" / Amp: "<< hits[i].word[j]<<" ***** ---- ";
+          else{
+          std::cout <<"T: "<<hits[i].time[j]<<" / Amp: "<< hits[i].word[j]<<" ---- ";
+          }
+        }
+        std::cout<<std::endl;
+      }
+
+      for (int i = 0; i< hits.size(); i++)
+      {
+        for(int j = 0; j<hits[i].time.size(); j++)
+        {
+        if( abs(hits[max_idx.first].x_pos-hits[i].x_pos) <= 2*pitch )
+          {
+            if(abs( hits[max_idx.first].time[max_idx.second]-hits[i].time[j]) <= max_time_window/2)      //maximum time separation
+            {
+              xcm += hits[i].x_pos*hits[i].word[j];
+              E_total += hits[i].word[j];
+              ClstTime += hits[i].time[j]*hits[i].word[j];
+              del_words.push_back(j);
+        
+
+
+            }
+
+          }
+        }
+
+        for (unsigned k = del_words.size(); k-- > 0; )
+          {
+            hits[i].word.erase(hits[i].word.begin()+del_words.at(k));
+            hits[i].time.erase(hits[i].time.begin()+del_words.at(k));        
+          }
+            del_words.clear();
+      }
+
+
+  for(int i = 0; i<hits.size(); i++)
+  {
+    if(hits[i].word.size()==0)
+    del_index.push_back(i);
+  } 
+
+  for (unsigned k = del_index.size(); k-- > 0; )
+  {
+    hits.erase(hits.begin()+del_index.at(k));  
+  }
+  del_index.clear();
+
+
+  ClustSize.push_back(ClstSize);
+  ClustPos.push_back(xcm/E_total);
+  ClustEnergy.push_back(E_total);
+  ClustTime.push_back(ClstTime/E_total);
+  std::cout <<"The new clusters: "<<ClstSize<< " "<<xcm/E_total<<" "<<E_total<<" "<<ClstTime/E_total<<std::endl;
+  std::cout <<"------------------------- NEXT -----------------" <<std::endl;
+
+  MaxNClust++;
+  xcm = 0;
+  E_total = 0;
+  ClstTime = 0;
+  ClstSize = 1;
+  }
+}
 
 
 int main(int argc, char *argv[])
@@ -113,10 +204,11 @@ int E_int=0;
 int T_max=0;
 int j = 0;
 int T_0 = 0;
+
 std::vector <int> CSize ={};
 std::vector <double> ClstPosX ={};
 std::vector <double> ClstEnergy ={};
-
+std::vector <double> ClstTime ={};
 
 std::vector <int> time_hit;
 std::vector <int> word_hit;
@@ -127,7 +219,7 @@ int num_bad_evt = 0;
 
 std::vector <Hits_evt> hits; 
 int event_id = 0;
-  while (reader.Next()) 
+  while (reader.Next() && event_id <1) 
   {
     std::cout << "_________new evt__________" << std::endl;
     auto& event_words = *words;
@@ -140,11 +232,11 @@ int event_id = 0;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       if(map_of_pedestals[gl_chn].first !=0 && map_of_pedestals[gl_chn].second != 1023)
       {
-        std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first<<"} ";
+        // std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first<<"} ";
 
         while(j < event_words[i].size()) {
           Num_words = event_words[i][j];
-          std::cout << Num_words <<" [ ";
+          // std::cout << Num_words <<" [ ";
             for(size_t k = 0; k<= Num_words; k++) {
               j++;
               if(k == 0)
@@ -169,16 +261,16 @@ int event_id = 0;
                     break; //bad value encountered
                   }
                 }
-              std::cout<<event_words[i][j]<<" "; 
+              // std::cout<<event_words[i][j]<<" "; 
             }
           if(bad_event) {
             bad_event=false;
             num_bad_evt++;
             break;
           }
-          std::cout <<" ] ---* ";
-          std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
-          if(time_hit.size() >0 && word_hit.size() >0)
+          // std::cout <<" ] ---* ";
+          // std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
+          if(time_hit.size() >0)
           {
             hits.push_back({gl_chn, time_hit, word_hit, x[i], E_int});
           }
@@ -203,7 +295,8 @@ int event_id = 0;
     std::cout<<std::endl;
     if(hits.size()>0)
     {
-      Make_Cluster(hits, CSize, ClstPosX, ClstEnergy);
+      std::sort(hits.begin(), hits.end(), sort_by_chn);
+      Make_Cluster(hits, CSize, ClstTime, ClstPosX, ClstEnergy);
     }
     hits.clear();
   } 
