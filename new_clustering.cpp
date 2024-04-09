@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
   bool evt_ok=false;
  
 int event_id = 0;
-  while (reader.Next())  
+  while (reader.Next() )  
   {
     std::fill( std::begin( sum_cm ), std::end( sum_cm ), 0 );
     std::fill( std::begin( n_chns ), std::end( n_chns ), 0 );

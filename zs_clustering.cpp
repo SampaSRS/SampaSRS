@@ -16,7 +16,8 @@
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
 
-const int max_time_window = 10; //maximum time difference before the maximum to be checked at 20MSps, 1 = 50ns 
+const int max_time_window = 10; //maximum time difference before the maximum to be checked at 20MSps, 1 = 50ns
+const int Min_Number_words = 5; //Minimum number of ADC samples to consider a cluster valid  
 
 
 
@@ -25,7 +26,6 @@ struct Hits_evt {
   std::vector <int> time;
   std::vector <int> word;
   double x_pos;
-  int E_tot;
 };
 
 bool sort_by_chn(const Hits_evt& a, const Hits_evt& b)
@@ -71,8 +71,8 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
   double ClstTime = 0;
   std::vector <double> del_index = {};
   std::vector <double> del_words = {};
-
-while(hits.size()>0)
+  int word_count = 0;
+  while(hits.size()>0)
   {
 
 
@@ -80,17 +80,17 @@ while(hits.size()>0)
     auto max_idx = GetMaxWord(hits);
     std::cout <<"New max: "<<max_idx.first <<" "<<max_idx.second <<std::endl;
 
-          for(int i = 0; i<hits.size(); i++)
-      {
-        std::cout <<"Index: "<< i <<" Position: "<<hits[i].x_pos <<std::endl;
-        for(int j = 0; j<hits[i].word.size(); j++){
-          if(i == max_idx.first && j == max_idx.second) std::cout <<"***T: "<<hits[i].time[j]<<" / Amp: "<< hits[i].word[j]<<" ***** ---- ";
-          else{
-          std::cout <<"T: "<<hits[i].time[j]<<" / Amp: "<< hits[i].word[j]<<" ---- ";
-          }
-        }
-        std::cout<<std::endl;
-      }
+      //     for(int i = 0; i<hits.size(); i++)
+      // {
+      //   std::cout <<"Index: "<< i <<" Position: "<<hits[i].x_pos <<std::endl;
+      //   for(int j = 0; j<hits[i].word.size(); j++){
+      //     if(i == max_idx.first && j == max_idx.second) std::cout <<"***T: "<<hits[i].time[j]<<" / Amp: "<< hits[i].word[j]<<" ***** ---- ";
+      //     else{
+      //     std::cout <<"T: "<<hits[i].time[j]<<" / Amp: "<< hits[i].word[j]<<" ---- ";
+      //     }
+      //   }
+      //   std::cout<<std::endl;
+      // }
 
       for (int i = 0; i< hits.size(); i++)
       {
@@ -104,7 +104,7 @@ while(hits.size()>0)
               E_total += hits[i].word[j];
               ClstTime += hits[i].time[j]*hits[i].word[j];
               del_words.push_back(j);
-        
+              word_count++;
 
 
             }
@@ -133,19 +133,22 @@ while(hits.size()>0)
   }
   del_index.clear();
 
-
-  ClustSize.push_back(ClstSize);
-  ClustPos.push_back(xcm/E_total);
-  ClustEnergy.push_back(E_total);
-  ClustTime.push_back(ClstTime/E_total);
-  std::cout <<"The new clusters: "<<ClstSize<< " "<<xcm/E_total<<" "<<E_total<<" "<<ClstTime/E_total<<std::endl;
-  std::cout <<"------------------------- NEXT -----------------" <<std::endl;
+  if(word_count>=Min_Number_words)
+  {
+    ClustSize.push_back(ClstSize);
+    ClustPos.push_back(xcm/E_total);
+    ClustEnergy.push_back(E_total);
+    ClustTime.push_back(ClstTime/E_total);
+    std::cout <<"The new clusters: "<<ClstSize<< " "<<xcm/E_total<<" "<<E_total<<" "<<ClstTime/E_total<<std::endl;
+    std::cout <<"------------------------- NEXT -----------------" <<std::endl;
+  }
 
   MaxNClust++;
   xcm = 0;
   E_total = 0;
   ClstTime = 0;
   ClstSize = 1;
+  word_count = 0;
   }
 }
 
@@ -188,12 +191,14 @@ std::cout << "Generating the Clustered file: " << Clstrootfname << std::endl;
 TTree *MyTree = new TTree("evt","evt");
 double E=0;
 double xcm=0;
+double TClst=0;
 int ClstSize=0;
 int ClstID=0;
 unsigned int trgID=0;
 MyTree->Branch("trgID",&trgID,"trgID/i");
 MyTree->Branch("ClstID",&ClstID,"ClstID/I");
 MyTree->Branch("ClstSize",&ClstSize,"ClstSize/I");
+MyTree->Branch("TClst",&TClst,"TClst/D");
 MyTree->Branch("xcm",&xcm,"xcm/D");
 MyTree->Branch("E",&E,"E/D");
 int Num_words=0;
@@ -213,13 +218,13 @@ std::vector <double> ClstTime ={};
 std::vector <int> time_hit;
 std::vector <int> word_hit;
 
-bool evt_ok=false;
+
 bool bad_event=false;
 int num_bad_evt = 0;
 
 std::vector <Hits_evt> hits; 
 int event_id = 0;
-  while (reader.Next() && event_id <1) 
+  while ( reader.Next() ) 
   {
     std::cout << "_________new evt__________" << std::endl;
     auto& event_words = *words;
@@ -251,7 +256,6 @@ int event_id = 0;
                     {
                       time_hit.push_back(T_0+k-1);  //The sampa structure is [Number of samples, Initial time, words ....] so K must be reduced by 1 
                       word_hit.push_back(event_words[i][j]-map_of_pedestals[gl_chn].first);
-                      E_int+=event_words[i][j]-map_of_pedestals[gl_chn].first;
                     }
                   }
                   else
@@ -272,20 +276,19 @@ int event_id = 0;
           // std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
           if(time_hit.size() >0)
           {
-            hits.push_back({gl_chn, time_hit, word_hit, x[i], E_int});
+            hits.push_back({gl_chn, time_hit, word_hit, x[i]});
           }
           time_hit.clear();
           word_hit.clear();
-          E_int=0;
           j++;
         }
-        evt_ok=false;
+
       }
     }
     
-    evt_ok=false;
+
     
-    E_int = 0;
+    
     ++event_id;
     // if(event_id % 10000==0)
     // {
@@ -299,6 +302,27 @@ int event_id = 0;
       Make_Cluster(hits, CSize, ClstTime, ClstPosX, ClstEnergy);
     }
     hits.clear();
+
+    for(int j = 0; j<ClstPosX.size(); j++)
+    {
+      ClstID = j;
+      trgID = event_id;
+      ClstSize = CSize.at(j);
+      xcm = ClstPosX.at(j);
+      E = ClstEnergy.at(j);
+      TClst = ClstTime.at(j);
+      std::cout <<"Cluster: "<< ClstID <<" "<<ClstSize<<" "<<TClst<<" "<<xcm<<" "<<E<<std::endl;
+      MyTree->Fill();
+    }
+
+    CSize.clear();
+    ClstTime.clear();
+    CSize.clear();
+    ClstEnergy.clear();
+    ClstPosX.clear();
+    
+
+
   } 
 
     //Escrever a nova TTree-----------------------------------------------
