@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
 
   if(argc != 3)
   {
-    std::cout << "Usage =: ./new_clustering <pedestal_file.txt> <data_file.root>" << std::endl;
+    std::cout << "Usage =: ./clustering <pedestal_file.txt> <data_file.root>" << std::endl;
     return 0;
   }
 

@@ -56,6 +56,12 @@ To start a acquisition first configure the system using `sampa_control`. After t
 
 The file _config.txt_ contains the different I2C commands to configure each SAMPA. An example is provided but different applications will have different configuration files. The complete list of commands and addresses can also be found at `include/sampasrs/slow_control.hpp` 
 
+To generate a pedestal file to configure the acquisition one can use the following command:
+
+    ./create_pedestal File_with_pedestals.root
+
+This will generate a `Run_ZSconfig.txt` file for the later zero suppression acquisition with the I2C instructions for configure each sampa channel, word length. The baseline compensation can be implemented by uncommenting a specific line inside the `create_pedestal.cpp`.
+
 ## Processing data
 
 The data processing chain starts with `sampa_decoder`. Use it to process _.raw_ files into _.root_ TTres. To create the pedestal files for non-zero suppression runs (this is the only feature available at the moment - zero suppression runs under construction :hammer_and_wrench:) run the following command:
@@ -64,6 +70,12 @@ The data processing chain starts with `sampa_decoder`. Use it to process _.raw_ 
 
 You will find that along with a text file containing the pedestal information, a graph and a small calculation to check integrity was made. 
 
-To process the data produced by the detector first decode the acquisition file with `sampa_decoder`. To generate the clusters and reconstruct events execute `clustering`
+To process the data produced by the detector first decode the acquisition file with `sampa_decoder`. To generate the clusters and reconstruct events (obtained with NON-ZS) execute `clustering`. The common-mode correction is applied to this type of run and can improve the signal-to-noise ratio.
 
     ./clustering <pedestal_file.txt> <data_file.root>
+
+To process data acquired using the sampa zero suppression feature use:
+
+    ./zs_clustering <pedestal_file.txt> <data_file.root>
+
+The pedestal file is used for baseline compensation.

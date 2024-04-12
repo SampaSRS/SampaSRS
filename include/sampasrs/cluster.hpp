@@ -88,8 +88,6 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
               ClstTime += hits[i].time[j]*hits[i].word[j];
               del_words.push_back(j);
               word_count++;
-
-
             }
 
           }
@@ -108,7 +106,7 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
   {
     if(hits[i].word.size()==0)
     del_index.push_back(i);
-  } 
+  } ClstSize++;
 
   for (unsigned k = del_index.size(); k-- > 0; )
   {
@@ -118,7 +116,7 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
 
   if(word_count>=Min_Number_words)
   {
-    ClustSize.push_back(ClstSize);
+    ClustSize.push_back(word_count);
     ClustPos.push_back(xcm/E_total);
     ClustEnergy.push_back(E_total);
     ClustTime.push_back(ClstTime/E_total);
