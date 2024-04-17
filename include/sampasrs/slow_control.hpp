@@ -304,7 +304,9 @@ namespace commands {
 
   inline uint32_t sampa_reg(unsigned char sampa, unsigned char reg)
   {
-    return 0xf4f00000 + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg);
+    unsigned char hybrid = 3;
+    // std::cout<<std::hex<< 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg) <<std::endl;
+    return 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg);
   }
 
   static constexpr int sampa_port = 6024;
@@ -437,11 +439,31 @@ namespace commands {
         throw std::invalid_argument("Expects 1 argument");
       }
 
-      auto [low_byte, high_byte] = low_high_bytes(args[0]);
+      auto [low_byte, high_byte] = low_high_bytes(args[0]); 
 
       return {sampa_write_burst(-1, SampaRegister::TWLENL, {low_byte, high_byte})};
     }
   };
+
+  struct ReduceLinks : Command {
+    ReduceLinks()
+        : Command("Reduce number of sampa links from 4 to 1")
+    {
+    }
+
+    Requests make(const std::vector<uint32_t>& args) const override
+    {
+      if (args.size() != 1) {
+        throw std::invalid_argument("Expects 1 argument");
+      }
+
+      auto [low_byte, high_byte] = low_high_bytes(args[0]);
+
+      return {sampa_write_burst(-1, SampaRegister::SOCFG, {low_byte, high_byte})};
+    }
+  };
+
+
 
   struct ZeroSuppression : Command {
     explicit ZeroSuppression()
@@ -562,6 +584,7 @@ get_commands()
   commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
   commands["pedestal_subtraction"] = std::make_unique<PedestalSubtraction>();
   commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
+  commands["reduce_links"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::SOCFG, "Reduce the number of links used (using 17 - hex 11 change from to 4 to 1)");
   commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
   commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
   commands["pedestal_cliff"]       = std::make_unique<PedestalCliff>();
