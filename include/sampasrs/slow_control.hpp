@@ -315,43 +315,52 @@ namespace commands {
 
   inline Request sampa_request(Request::Type type, uint32_t cmd_info, const std::vector<uint32_t>& data)
   {
+    
     return {sampa_port, Request::SubAddress::Full, type, cmd_info, data};
   }
 
   // sampa = -1 : broadcast to all sampas
   inline Requests sampa_write_burst(char hybrid, char sampa, unsigned char reg, const std::vector<uint32_t>& data)
   {
-    if (sampa > 0) {
-      return {sampa_request(Request::Type::WriteBurst, sampa_reg(hybrid, sampa, reg), data)};
-    }
     // broadcast to all sampas
     Requests requests;
-    for (unsigned char j = 0; j < hybrid_count; ++j) {
-      for (unsigned char i = 0; i < sampa_count; ++i) {
-        requests.push_back(sampa_request(Request::Type::WriteBurst, sampa_reg(j, i, reg), data));
+    for(unsigned int t = 0; t < 10; t++)
+    {
+      if (sampa > 0) {
+        return {sampa_request(Request::Type::WriteBurst, sampa_reg(hybrid, sampa, reg), data)};
+      }
+
+      for (unsigned char j = 0; j < hybrid_count; ++j) {
+        for (unsigned char i = 0; i < sampa_count; ++i) {
+          requests.push_back(sampa_request(Request::Type::WriteBurst, sampa_reg(j, i, reg), data));
+        }
       }
     }
     return requests;
   }
+
 
   // sampa = -1 : broadcast to all sampas
   inline Request sampa_write_pairs(char hybrid, char sampa, const std::vector<std::pair<unsigned char, uint32_t>>& reg_val)
   {
     std::vector<uint32_t> data;
     for (auto [reg, val] : reg_val) {
-      if (sampa > 0) {
-        data.push_back(sampa_reg(hybrid, sampa, reg));
-        data.push_back(val);
-      } else {
-      for (unsigned char j = 0; j < hybrid_count; ++j) {
-          for (unsigned char i = 0; i < sampa_count; ++i) {
-            data.push_back(sampa_reg(j, i, reg));
-            data.push_back(val);
+      for (unsigned int t = 0; t < 10; t++){
+        if (sampa > 0) {
+          data.push_back(sampa_reg(hybrid, sampa, reg));
+          data.push_back(val);
+        } else {
+        for (unsigned char j = 0; j < hybrid_count; ++j) {
+            for (unsigned char i = 0; i < sampa_count; ++i) {
+              data.push_back(sampa_reg(j, i, reg));
+              data.push_back(val);
+            }
           }
         }
       }
     }
     return sampa_request(Request::Type::WritePairs, 0, data);
+    
   }
 
   // sampa = -1 : broadcast to all sampas
@@ -590,7 +599,8 @@ get_commands()
   commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
   commands["pedestal_subtraction"] = std::make_unique<PedestalSubtraction>();
   commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
-  commands["reduce_links"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::SOCFG, "Reduce the number of links used (using 17 - hex 11 change from to 4 to 1)");
+  // commands["reduce_links"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::SOCFG, "Reduce the number of links used (using 17 - hex 11 change from to 4 to 1)");
+  commands["reduce_links"]         = std::make_unique<ReduceLinks>();
   commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
   commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
   commands["pedestal_cliff"]       = std::make_unique<PedestalCliff>();
