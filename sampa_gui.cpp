@@ -17,6 +17,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <TEnv.h>
 
 using namespace sampasrs;
 
@@ -158,19 +159,22 @@ static ImPlotPoint hist_data_getter(int idx, void* _hist)
 
 class App {
   public:
-  void run()
+  void run(const char* fconf = "AcqConfig.conf")
   {
-    start_acquisition();
+    start_acquisition(fconf);
     info();
     graphs();
   }
 
-  void start_acquisition()
+  void start_acquisition(const char* fconf)
   {
     // Acquisition configs
+    TEnv env(fconf);
+    
     static constexpr bool save_raw = true;
     static constexpr bool process_events = true;
-    static const std::string fec_address = "10.0.0.2";
+    //static const std::string fec_address = "10.0.0.2";
+    static const std::string fec_address = env.GetValue("fec_address","");
     static const auto event_handler = [&](Event&& event) { m_graphs.event_handle(std::move(event)); };
 
     // Style constants
@@ -182,7 +186,8 @@ class App {
     // GUI state
     static bool save_to_file = true;
     static unsigned char acquisition_error = Acquisition::Stop;
-    static std::string file_prefix = "sampasrs";
+    //static std::string file_prefix = "~/data/SAMPA/24";
+    static std::string file_prefix = env.GetValue("file_prefix","");
 
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, gray);
     if (m_acquisition) {
@@ -358,11 +363,15 @@ class App {
   std::unique_ptr<Acquisition> m_acquisition;
 };
 
-int main(int /*unused*/, char* /*unused*/[])
+
+int main(int argc, char* argv[])
 {
   App app {};
   auto* implotContext = ImPlot::CreateContext();
-  HelloImGui::Run([&app]() { app.run(); }, "SampaSRS",true);
+  if(argc==2)
+    HelloImGui::Run([&app,argv]() { app.run(argv[1]); }, "SampaSRS",true);
+  else
+    HelloImGui::Run([&app]() { app.run(); }, "SampaSRS",true);
   ImPlot::DestroyContext(implotContext);
   return 0;
 }

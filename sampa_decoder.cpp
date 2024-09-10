@@ -5,6 +5,7 @@
 
 #include <TFile.h>
 #include <TTree.h>
+#include <TEnv.h>
 
 #ifdef WITH_LIBPCAP
 #include <tins/tins.h>
@@ -18,6 +19,13 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+void GetMapFromConfig(const char* fenv, char* fname)
+{
+  TEnv env(fenv);
+  snprintf(fname,100,"%s",env.GetValue("mapping",""));
+
+}
 
 int main(int argc, const char* argv[])
 {
@@ -39,8 +47,12 @@ int main(int argc, const char* argv[])
   // mapping pair creation
   std::unordered_map<int, std::pair<double, double>> map_of_strips = {};
 
-  Mapping_strips(map_of_strips); // change the mapping on mapping.hpp for a diferent detector
+  char* fname = new char[100];
+  GetMapFromConfig("acqConfig.conf",fname);
 
+  Mapping_strips(map_of_strips,fname); // change the mapping on mapping.hpp for a diferent detector
+  delete[] fname;
+  
   // Tree branches
   uint32_t bx_count {};
   uint8_t fec_id {};
