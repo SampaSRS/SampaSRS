@@ -159,7 +159,7 @@ static ImPlotPoint hist_data_getter(int idx, void* _hist)
 
 class App {
   public:
-  void run(const char* fconf = "AcqConfig.conf")
+  void run(const char* fconf = "../AcqConfig.conf")
   {
     start_acquisition(fconf);
     info();
