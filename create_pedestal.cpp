@@ -147,7 +147,7 @@ int main(int argc, const char* argv[])
   while (reader.Next() && event_id < NumEvts) {
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) {
-      const int global_channel = (sampa[i] - 8) * 32 + channel[i];
+      const int global_channel = (sampa[i]) * 32 + channel[i];
       auto& pedestal = channels[global_channel];
 
       // Fill info on first occurrence
@@ -185,16 +185,16 @@ int main(int argc, const char* argv[])
     TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
     //ZS cut = baseline+3sigma ATTENTION: SAMPA index is sent from 8 to 11 but needs to be written from 0 to 4 (see sampa-8).
     if(var==0){ //channel locked - suppress it at maximum
-      if(pedestal.sampa-8>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 1023 << "\n"; 
+      if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 1023 << "\n"; 
     }
     else {
       // if(pedestal.sampa-8>=0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<u_int32_t>(mean+5*std::sqrt(var) )<< "\n";
-            if(pedestal.sampa-8>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 200 << "\n";
+            if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 200 << "\n";
       // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
       // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 50 << "\n";
 
     }
-    Has_pedestal_vec[32*(pedestal.sampa-8)+pedestal.channel]=true; //fill the channels with true
+    Has_pedestal_vec[32*(pedestal.sampa)+pedestal.channel]=true; //fill the channels with true
   }
 
   for(int i=0; i< Has_pedestal_vec.size(); i++)
