@@ -5,6 +5,7 @@
 
 #include <TFile.h>
 #include <TTree.h>
+#include <TEnv.h>
 
 #ifdef WITH_LIBPCAP
 #include <tins/tins.h>
@@ -19,9 +20,21 @@
 #include <unordered_map>
 #include <vector>
 
+using namespace sampasrs;
+
+
+
+ConfigVars::ConfigVars(const char* conffile)
+{
+  std::cout << "Reading config file" << std::endl;
+  TEnv env(conffile);
+  mapfpath.assign(env.GetValue("mapping",""));
+  minsampa = env.GetValue("first_sampa",0);
+  
+}
+
 int main(int argc, const char* argv[])
 {
-  using namespace sampasrs;
 
   if (argc < 2) {
     std::cerr << "Usage: sampa_decoder <input files>\n";
@@ -39,8 +52,13 @@ int main(int argc, const char* argv[])
   // mapping pair creation
   std::unordered_map<int, std::pair<double, double>> map_of_strips = {};
 
-  Mapping_strips(map_of_strips); // change the mapping on mapping.hpp for a diferent detector
-
+  ConfigVars conf("../AcqConfig.conf");
+  std::cout << "Conf. file successfuly read." << std::endl;
+  std::cout << "Map file: " << conf.mapfpath << std::endl;
+  std::cout << "MinSampa: " << conf.minsampa << std::endl;
+  
+  Mapping_strips(map_of_strips,conf.mapfpath.c_str()); 
+  
   // Tree branches
   uint32_t bx_count {};
   uint8_t fec_id {};
@@ -82,8 +100,8 @@ int main(int argc, const char* argv[])
       const auto header = event.get_header(waveform);
       channel.push_back((int)header.channel_addr());
       sampa.push_back((int)header.sampa_addr());
-      x.push_back(map_of_strips[32 * ((int)header.sampa_addr() - 8) + (int)header.channel_addr()].first);  // only works using sampa from 8 to 11
-      y.push_back(map_of_strips[32 * ((int)header.sampa_addr() - 8) + (int)header.channel_addr()].second); // only works using sampa from 8 to 11
+      x.push_back(map_of_strips[32 * ((int)header.sampa_addr() - conf.minsampa) + (int)header.channel_addr()].first);  // only works using sampa from 8 to 11
+      y.push_back(map_of_strips[32 * ((int)header.sampa_addr() - conf.minsampa) + (int)header.channel_addr()].second); // only works using sampa from 8 to 11
       words.push_back(event.copy_waveform(waveform));
     }
 
@@ -119,20 +137,21 @@ int main(int argc, const char* argv[])
     std::cout << "Reading file: " << file_name;
     if (file_extension == ".raw") {
       std::cout << " as raw file\n";
-      std::ifstream input_file(file_name, std::ios::binary);
+      std::ifstream input_file(file_name.c_str(), std::ios::binary);
       if (!input_file) {
         std::cerr << "Unable to open file\n";
         return 1;
       }
-
+      int it=0;
       while (!input_file.eof()) {
+	it++;
         auto payload = Payload::read(input_file);
         input_bytes += payload.byte_size();
         sorter.process(payload);
       }
     } else if (file_extension == ".rawev") {
       std::cout << " as raw events file\n";
-      std::ifstream input_file(file_name, std::ios::binary);
+      std::ifstream input_file(file_name.c_str(), std::ios::binary);
       if (!input_file) {
         std::cerr << "Unable to open file\n";
         return 1;

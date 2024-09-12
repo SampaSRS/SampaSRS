@@ -111,7 +111,7 @@ if (SAMPA_BUILD_ACQUISITION AND SAMPA_BUILD_GUI)
         ${ImGuiFileDialog_SOURCES}
     )
     target_include_directories(sampa_gui PRIVATE ${implot_SOURCE_DIR} ${ImGuiFileDialog_SOURCE_DIR})
-    target_link_libraries(sampa_gui PRIVATE sampasrs)
+    target_link_libraries(sampa_gui PRIVATE sampasrs sampa_root)
     target_compile_definitions(sampa_gui PRIVATE USE_BOOKMARK)
 
 

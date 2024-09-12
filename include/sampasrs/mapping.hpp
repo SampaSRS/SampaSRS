@@ -6,25 +6,24 @@
 #include <vector>
 #include <string>
  
-inline void Mapping_strips(std::unordered_map<int, std::pair<double, double>> &my_map)
+inline void Mapping_strips(std::unordered_map<int, std::pair<double, double>> &my_map, const char* fmap = "../mapping_files/Mapping_strips.txt")
 {
-    // Create an unordered_map of three values glchn(sampa*32+Chn)    
+    // Create an unordered_map of three values glchn(sampa*32+Chn)
+  std::cout << "Applying map" << std::endl;
     std::ifstream mapfile;
     int glchn=0;
     double xcm=0;
     double ycm=0;
     std::string str;
-    mapfile.open("../mapping_files/Mapping_strips.txt");
+    mapfile.open(fmap);
     mapfile >> str;
     mapfile >> str;
     mapfile >> str;
-    for(int i=0;i<128;i++)
+    while(mapfile >> glchn >> xcm >> ycm)
     {
-        mapfile >> glchn;
-        mapfile >> xcm;
-        mapfile >> ycm;
-        // std::cout << glchn<<" "<<xcm<<" "<<ycm<<std::endl;
-        my_map[i] = {xcm, ycm};
+      my_map[glchn] = {xcm, ycm};
+      //std::cout << glchn<<" "<<xcm<<" "<<ycm<<std::endl;
+        
     }
     mapfile.close();
 }
