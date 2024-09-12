@@ -1,0 +1,7 @@
+stop
+reset_fec
+reset_sampas
+#trigger_external
+trigger_1hz
+word_length 500
+pretrigger 25
