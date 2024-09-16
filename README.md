@@ -1,4 +1,15 @@
+- [SampaSRS](#sampasrs)
+  - [How to build](#how-to-build)
+    - [Ubuntu dependencies](#ubuntu-dependencies)
+    - [Windows dependencies](#windows-dependencies)
+    - [Build](#build)
+    - [Cluster build](#cluster-build)
+    - [Running on Linux](#running-on-linux)
+  - [Details and User manual](#details-and-user-manual)
+  - [Support](#support)
 # SampaSRS
+
+The SampaSRS is a software designed to control and operate the SAMPA ASIC using CERN's Scalable Readout System framework. The software also read, decode and process data produced by detectors.
 
 ## How to build
 
@@ -47,23 +58,12 @@ The `SAMPA_BUILD_ACQUISITION` flag will disable all acquisition-related code, in
     sudo setcap cap_net_raw=pe sampa_acquisition
     sudo setcap cap_net_raw=pe sampa_gui
 
-## Running the acquisition
 
-To start a acquisition first configure the system using `sampa_control`. After that, execute `sampa_gui`. You can choose to save the file or not. 
 
-    ./sampa_control config.txt
-    sudo ./sampa_gui
+## Details and User manual
 
-The file _config.txt_ contains the different I2C commands to configure each SAMPA. An example is provided but different applications will have different configuration files. The complete list of commands and addresses can also be found at `include/sampasrs/slow_control.hpp` 
+The full details and the user manual can be found on the [wiki](https://github.com/SampaSRS/SampaSRS/wiki/) webpage.
 
-## Processing data
+## Support
 
-The data processing chain starts with `sampa_decoder`. Use it to process _.raw_ files into _.root_ TTres. To create the pedestal files for non-zero suppression runs (this is the only feature available at the moment - zero suppression runs under construction :hammer_and_wrench:) run the following command:
-
-    ./sampa_decoder pedestal_file.raw
-
-You will find that along with a text file containing the pedestal information, a graph and a small calculation to check integrity was made. 
-
-To process the data produced by the detector first decode the acquisition file with `sampa_decoder`. To generate the clusters and reconstruct events execute `clustering`
-
-    ./clustering <pedestal_file.txt> <data_file.root>
+If you have any questions, please contact the [SAMPA development team](hepic@if.usp.br) @HEPIC-IFUSP
