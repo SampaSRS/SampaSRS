@@ -22,7 +22,7 @@ inline void Mapping_strips(std::unordered_map<int, std::pair<double, double>> &m
     while(mapfile >> glchn >> xcm >> ycm)
     {
       my_map[glchn] = {xcm, ycm};
-      //std::cout << glchn<<" "<<xcm<<" "<<ycm<<std::endl;
+      // std::cout << glchn<<" "<<xcm<<" "<<ycm<<std::endl;
         
     }
     mapfile.close();

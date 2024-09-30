@@ -59,13 +59,14 @@ int main(int argc, const char* argv[])
   
   Mapping_strips(map_of_strips,conf.mapfpath.c_str()); 
   
+
   // Tree branches
   uint32_t bx_count {};
   uint8_t fec_id {};
   long timestamp {};
   std::vector<short> channel {};
   std::vector<short> sampa {};
-  std::vector<int> PadID {};
+  std::vector<int> glchn {};
   std::vector<double> x {};
   std::vector<double> y {};
   std::vector<std::vector<short>> words {};
@@ -75,7 +76,7 @@ int main(int argc, const char* argv[])
   tree.Branch("timestamp", &timestamp, "timestamp/L");
   tree.Branch("channel", &channel);
   tree.Branch("sampa", &sampa);
-  tree.Branch("PadID", &PadID);
+  tree.Branch("glchn", &glchn);
   tree.Branch("x", &x);
   tree.Branch("y", &y);
   tree.Branch("words", &words);
@@ -100,6 +101,7 @@ int main(int argc, const char* argv[])
       const auto header = event.get_header(waveform);
       channel.push_back((int)header.channel_addr());
       sampa.push_back((int)header.sampa_addr());
+      glchn.push_back(32 * ((int)header.sampa_addr() - conf.minsampa) + (int)header.channel_addr());
       x.push_back(map_of_strips[32 * ((int)header.sampa_addr() - conf.minsampa) + (int)header.channel_addr()].first);  // only works using sampa from 8 to 11
       y.push_back(map_of_strips[32 * ((int)header.sampa_addr() - conf.minsampa) + (int)header.channel_addr()].second); // only works using sampa from 8 to 11
       words.push_back(event.copy_waveform(waveform));
