@@ -30,11 +30,11 @@ void make_plot(const char *filename)
     double sigma=0;
     double meany;
     double sigmay;
-    TH1D* Baseline =new TH1D("Mean", "Mean", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
-    TH1D* Noise =new TH1D("Sigma", "Sigma", 128, 0, 128);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* Baseline =new TH1D("Mean", "Mean", 512, 0, 512);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* Noise =new TH1D("Sigma", "Sigma", 512, 0, 512);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
 
-    TH1D* MeanHist =new TH1D("Mean2", "Mean2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
-    TH1D* SigmaHist =new TH1D("Sigma2", "Sigma2", 128, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* MeanHist =new TH1D("Mean2", "Mean2", 512, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
+    TH1D* SigmaHist =new TH1D("Sigma2", "Sigma2", 512, 0, 1024);  //Cria um histograma com eixo indo de -5 a 5 e 30 canais
 
     std::ifstream infile;
     infile.open (filename);
@@ -165,7 +165,7 @@ int main(int argc, const char* argv[])
     event_id++;
   }
 
-  const size_t SIZE = 128; // However many elements you want in the vector.  
+  const size_t SIZE = 512; // However many elements you want in the vector.  
   const bool initial_value = false; // All elements will be set to this value
   std::vector<bool> Has_pedestal_vec(SIZE, initial_value);
 
@@ -188,8 +188,8 @@ int main(int argc, const char* argv[])
       if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 1023 << "\n"; 
     }
     else {
-      // if(pedestal.sampa-8>=0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<u_int32_t>(mean+5*std::sqrt(var) )<< "\n";
-            if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 200 << "\n";
+      if(pedestal.sampa-8>=0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<u_int32_t>(mean+5*std::sqrt(var) )<< "\n";
+            // if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 200 << "\n";
       // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
       // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 50 << "\n";
 
