@@ -3,6 +3,7 @@
 #include <iostream>
 #include <numeric>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <unordered_map>
 #include <fstream>
@@ -14,6 +15,12 @@
 #include "TFile.h"
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
+
+const int max_time_window = 10; //maximum time difference before the maximum to be checked at 20MSps, 1 = 50ns
+const int Min_Number_words = 5; //Minimum number of ADC samples to consider a cluster valid  
+
+
+
 
 
 int main(int argc, char *argv[])
@@ -54,12 +61,14 @@ std::cout << "Generating the Clustered file: " << Clstrootfname << std::endl;
 TTree *MyTree = new TTree("evt","evt");
 double E=0;
 double xcm=0;
+double TClst=0;
 int ClstSize=0;
 int ClstID=0;
 unsigned int trgID=0;
 MyTree->Branch("trgID",&trgID,"trgID/i");
 MyTree->Branch("ClstID",&ClstID,"ClstID/I");
 MyTree->Branch("ClstSize",&ClstSize,"ClstSize/I");
+MyTree->Branch("TClst",&TClst,"TClst/D");
 MyTree->Branch("xcm",&xcm,"xcm/D");
 MyTree->Branch("E",&E,"E/D");
 int Num_words=0;
@@ -70,19 +79,22 @@ int E_int=0;
 int T_max=0;
 int j = 0;
 int T_0 = 0;
+
 std::vector <int> CSize ={};
 std::vector <double> ClstPosX ={};
 std::vector <double> ClstEnergy ={};
+std::vector <double> ClstTime ={};
+
+std::vector <int> time_hit;
+std::vector <int> word_hit;
 
 
-std::vector <std::pair <double, std::pair<int, int>>> hit ={};
-
-bool evt_ok=false;
 bool bad_event=false;
 int num_bad_evt = 0;
- 
+
+std::vector <Hits_evt> hits; 
 int event_id = 0;
-  while (reader.Next()) 
+  while ( reader.Next() ) 
   {
     std::cout << "_________new evt__________" << std::endl;
     auto& event_words = *words;
@@ -95,11 +107,11 @@ int event_id = 0;
       gl_chn = 32*(sampa[i]-8)+channel[i];
       if(map_of_pedestals[gl_chn].first !=0 && map_of_pedestals[gl_chn].second != 1023)
       {
-        std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second<<"} ";
+        // std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first<<"} ";
 
         while(j < event_words[i].size()) {
           Num_words = event_words[i][j];
-          std::cout << Num_words <<" [ ";
+          // std::cout << Num_words <<" [ ";
             for(size_t k = 0; k<= Num_words; k++) {
               j++;
               if(k == 0)
@@ -109,7 +121,13 @@ int event_id = 0;
               else
                 {
                   if(event_words[i][j] > 0 && event_words[i][j]<1024)
-                  E_int+=event_words[i][j]-map_of_pedestals[gl_chn].first;
+                  {
+                    if(event_words[i][j]-map_of_pedestals[gl_chn].first>2)
+                    {
+                      time_hit.push_back(T_0+k-1);  //The sampa structure is [Number of samples, Initial time, words ....] so K must be reduced by 1 
+                      word_hit.push_back(event_words[i][j]-map_of_pedestals[gl_chn].first);
+                    }
+                  }
                   else
                   {
                     //discard event
@@ -117,31 +135,30 @@ int event_id = 0;
                     break; //bad value encountered
                   }
                 }
-              std::cout<<event_words[i][j]<<" "; 
+              // std::cout<<event_words[i][j]<<" "; 
             }
           if(bad_event) {
             bad_event=false;
             num_bad_evt++;
             break;
           }
-          std::cout <<" ] ---* ";
-          std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
-          E_int=0;
+          // std::cout <<" ] ---* ";
+          // std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
+          if(time_hit.size() >0)
+          {
+            hits.push_back({gl_chn, time_hit, word_hit, x[i]});
+          }
+          time_hit.clear();
+          word_hit.clear();
           j++;
         }
 
-        // std::cout<<event_id<<" "<<evt_ok<<" " << x[i] <<" "<<E_max<<std::endl;
-        hit.push_back(std::make_pair(x[i], std::make_pair(E_max, evt_ok)));
-
-        evt_ok=false;
       }
     }
-    std::sort(hit.begin(), hit.end());    
+    
 
     
-    evt_ok=false;
     
-    E_int = 0;
     ++event_id;
     // if(event_id % 10000==0)
     // {
@@ -149,6 +166,33 @@ int event_id = 0;
 
     // }
     std::cout<<std::endl;
+    if(hits.size()>0)
+    {
+      std::sort(hits.begin(), hits.end(), sort_by_chn);
+      Make_1D_Strip_Cluster(hits, CSize, ClstTime, ClstPosX, ClstEnergy);
+    }
+    hits.clear();
+
+    for(int j = 0; j<ClstPosX.size(); j++)
+    {
+      ClstID = j;
+      trgID = event_id;
+      ClstSize = CSize.at(j);
+      xcm = ClstPosX.at(j);
+      E = ClstEnergy.at(j);
+      TClst = ClstTime.at(j);
+      std::cout <<"Cluster: "<< ClstID <<" "<<ClstSize<<" "<<TClst<<" "<<xcm<<" "<<E<<std::endl;
+      MyTree->Fill();
+    }
+
+    CSize.clear();
+    ClstTime.clear();
+    CSize.clear();
+    ClstEnergy.clear();
+    ClstPosX.clear();
+    
+
+
   } 
 
     //Escrever a nova TTree-----------------------------------------------

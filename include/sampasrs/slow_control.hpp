@@ -302,55 +302,71 @@ namespace commands {
     }
   };
 
-  inline uint32_t sampa_reg(unsigned char sampa, unsigned char reg)
+  inline uint32_t sampa_reg(unsigned char hybrid, unsigned char sampa, unsigned char reg)
   {
-    return 0xf4f00000 + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg);
+    // unsigned char hybrid = 3;
+    std::cout<<std::hex<< 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg) <<std::endl;
+    return 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg);
   }
 
   static constexpr int sampa_port = 6024;
   static constexpr unsigned char sampa_count = 4;
+  static constexpr unsigned char hybrid_count = 4;
 
   inline Request sampa_request(Request::Type type, uint32_t cmd_info, const std::vector<uint32_t>& data)
   {
+    
     return {sampa_port, Request::SubAddress::Full, type, cmd_info, data};
   }
 
   // sampa = -1 : broadcast to all sampas
-  inline Requests sampa_write_burst(char sampa, unsigned char reg, const std::vector<uint32_t>& data)
+  inline Requests sampa_write_burst(char hybrid, char sampa, unsigned char reg, const std::vector<uint32_t>& data)
   {
-    if (sampa > 0) {
-      return {sampa_request(Request::Type::WriteBurst, sampa_reg(sampa, reg), data)};
-    }
     // broadcast to all sampas
     Requests requests;
-    for (unsigned char i = 0; i < sampa_count; ++i) {
-      requests.push_back(sampa_request(Request::Type::WriteBurst, sampa_reg(i, reg), data));
+    for(unsigned int t = 0; t < 10; t++)
+    {
+      if (sampa > 0) {
+        return {sampa_request(Request::Type::WriteBurst, sampa_reg(hybrid, sampa, reg), data)};
+      }
+
+      for (unsigned char j = 0; j < hybrid_count; ++j) {
+        for (unsigned char i = 0; i < sampa_count; ++i) {
+          requests.push_back(sampa_request(Request::Type::WriteBurst, sampa_reg(j, i, reg), data));
+        }
+      }
     }
     return requests;
   }
 
+
   // sampa = -1 : broadcast to all sampas
-  inline Request sampa_write_pairs(char sampa, const std::vector<std::pair<unsigned char, uint32_t>>& reg_val)
+  inline Request sampa_write_pairs(char hybrid, char sampa, const std::vector<std::pair<unsigned char, uint32_t>>& reg_val)
   {
     std::vector<uint32_t> data;
     for (auto [reg, val] : reg_val) {
-      if (sampa > 0) {
-        data.push_back(sampa_reg(sampa, reg));
-        data.push_back(val);
-      } else {
-        for (unsigned char i = 0; i < sampa_count; ++i) {
-          data.push_back(sampa_reg(i, reg));
+      for (unsigned int t = 0; t < 10; t++){
+        if (sampa > 0) {
+          data.push_back(sampa_reg(hybrid, sampa, reg));
           data.push_back(val);
+        } else {
+        for (unsigned char j = 0; j < hybrid_count; ++j) {
+            for (unsigned char i = 0; i < sampa_count; ++i) {
+              data.push_back(sampa_reg(j, i, reg));
+              data.push_back(val);
+            }
+          }
         }
       }
     }
     return sampa_request(Request::Type::WritePairs, 0, data);
+    
   }
 
   // sampa = -1 : broadcast to all sampas
   // channel = -1 : broadcast to all channels
   // reg = -1 to skip channel register assignment, use the previous one
-  inline Requests channel_write(char sampa, char channel, char reg, uint32_t value, bool increment_pedestal_addr = false)
+  inline Requests channel_write(char hybrid, char sampa, char channel, char reg, uint32_t value, bool increment_pedestal_addr = false)
   {
     auto [low_byte, high_byte] = low_high_bytes(value);
 
@@ -366,9 +382,9 @@ namespace commands {
     }
 
     if (reg > 0) {
-      return sampa_write_burst(sampa, SampaRegister::CHRGADD, {static_cast<uint32_t>(reg), low_byte, high_byte, channel_control});
+      return sampa_write_burst(hybrid, sampa, SampaRegister::CHRGADD, {static_cast<uint32_t>(reg), low_byte, high_byte, channel_control});
     }
-    return sampa_write_burst(sampa, SampaRegister::CHRGWDATL, {low_byte, high_byte, channel_control});
+    return sampa_write_burst(hybrid, sampa, SampaRegister::CHRGWDATL, {low_byte, high_byte, channel_control});
   }
 
   struct SampaBroadcastPairs : Command {
@@ -392,11 +408,11 @@ namespace commands {
       uint32_t val = has_reg ? args[0] : args[1];
 
       std::vector<std::pair<unsigned char, uint32_t>> data {};
-      for (unsigned char i = 0; i < sampa_count; ++i) {
+      // for (unsigned char i = 0; i < sampa_count; ++i) {
         data.emplace_back(reg, val);
-      }
+      // }
 
-      return {sampa_write_pairs(-1, data)};
+      return {sampa_write_pairs(-1,-1, data)};
     }
   };
 
@@ -421,7 +437,7 @@ namespace commands {
       std::vector<uint32_t> data;
       std::copy(args.begin() + (has_reg ? 0 : 1), args.end(), std::back_inserter(data));
 
-      return sampa_write_burst(-1, reg, data);
+      return sampa_write_burst(-1,-1, reg, data);
     }
   };
 
@@ -437,11 +453,31 @@ namespace commands {
         throw std::invalid_argument("Expects 1 argument");
       }
 
-      auto [low_byte, high_byte] = low_high_bytes(args[0]);
+      auto [low_byte, high_byte] = low_high_bytes(args[0]); 
 
-      return {sampa_write_burst(-1, SampaRegister::TWLENL, {low_byte, high_byte})};
+      return {sampa_write_burst(-1,-1, SampaRegister::TWLENL, {low_byte, high_byte})};
     }
   };
+
+  struct ReduceLinks : Command {
+    ReduceLinks()
+        : Command("Reduce number of sampa links from 4 to 1")
+    {
+    }
+
+    Requests make(const std::vector<uint32_t>& args) const override
+    {
+      if (args.size() != 1) {
+        throw std::invalid_argument("Expects 1 argument");
+      }
+
+      auto [low_byte, high_byte] = low_high_bytes(args[0]);
+
+      return {sampa_write_burst(-1, -1, SampaRegister::SOCFG, {low_byte, high_byte})};
+    }
+  };
+
+
 
   struct ZeroSuppression : Command {
     explicit ZeroSuppression()
@@ -458,7 +494,7 @@ namespace commands {
       // Zero suppression uses 2 bit resolution
       auto val = args[0] << 2u;
 
-      return {channel_write(-1, -1, ChannelRegister::ZSTHR, val)};
+      return {channel_write(-1, -1, -1, ChannelRegister::ZSTHR, val)};
     }
   };
 
@@ -470,16 +506,17 @@ namespace commands {
 
     Requests make(const std::vector<uint32_t>& args) const override
     {
-      if (args.size() != 3) {
-        throw std::invalid_argument("Expects 3 arguments");
+      if (args.size() != 4) {
+        throw std::invalid_argument("Expects 4 arguments");
       }
       
-      auto sampa = static_cast<char> (args[0]);
-      auto channel = static_cast <char> (args[1]);
+      auto hybrid = static_cast<char> (args[0]);
+      auto sampa = static_cast<char> (args[1]);
+      auto channel = static_cast <char> (args[2]);
       // Zero suppression uses 2 bit resolution
-      auto val = args[2] << 2u;
+      auto val = args[3] << 2u;
 
-      return {channel_write(sampa, channel, ChannelRegister::ZSTHR, val)};
+      return {channel_write(hybrid, sampa, channel, ChannelRegister::ZSTHR, val)};
     }
   };
 
@@ -491,16 +528,16 @@ namespace commands {
 
     Requests make(const std::vector<uint32_t>& args) const override
     {
-      if (args.size() != 3) {
-        throw std::invalid_argument("Expects 3 arguments");
+      if (args.size() != 4) {
+        throw std::invalid_argument("Expects 4 arguments");
       }
-      
-      auto sampa = static_cast<char> (args[0]);
-      auto channel = static_cast <char> (args[1]);
+      auto hybrid = static_cast<char> (args[0]);      
+      auto sampa = static_cast<char> (args[1]);
+      auto channel = static_cast <char> (args[2]);
       // Zero suppression uses 2 bit resolution
-      auto val = args[2] << 2u;
+      auto val = args[3] << 2u;
 
-      return {channel_write(sampa, channel, ChannelRegister::FPD, val)};
+      return {channel_write(hybrid, sampa, channel, ChannelRegister::FPD, val)};
     }
   };
 
@@ -521,7 +558,7 @@ namespace commands {
       }
 
       Requests requests;
-      const auto enable_write = sampa_write_burst(-1, SampaRegister::PMADDL, {0, 0, ChannelRegister::PMDATA});
+      const auto enable_write = sampa_write_burst(-1, -1, SampaRegister::PMADDL, {0, 0, ChannelRegister::PMDATA});
       std::copy(enable_write.begin(), enable_write.end(), std::back_inserter(requests));
 
       for (uint32_t x = 0; x < 1024; ++x) {
@@ -529,7 +566,7 @@ namespace commands {
         std::copy(pedestal_value.begin(), pedestal_value.end(), std::back_inserter(requests));
       }
 
-      const auto pedestal_mode = channel_write(-1, -1, ChannelRegister::DPCFG, 0x0a);
+      const auto pedestal_mode = channel_write(-1, -1, -1, ChannelRegister::DPCFG, 0x0a);
       std::copy(pedestal_mode.begin(), pedestal_mode.end(), std::back_inserter(requests));
 
       return requests;
@@ -562,6 +599,8 @@ get_commands()
   commands["set_zero_suppression"] = std::make_unique<SetZeroSuppression>();
   commands["pedestal_subtraction"] = std::make_unique<PedestalSubtraction>();
   commands["set_all_sampas"]       = std::make_unique<SampaBroadcastPairs>();
+  // commands["reduce_links"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::SOCFG, "Reduce the number of links used (using 17 - hex 11 change from to 4 to 1)");
+  commands["reduce_links"]         = std::make_unique<ReduceLinks>();
   commands["pretrigger"]           = std::make_unique<SampaBroadcastPairs>(SampaRegister::PRETRG, "Number of pre-samples (Pre-trigger delay), max 192");
   commands["sampa_config"]         = std::make_unique<SampaBroadcastPairs>(SampaRegister::VACFG, "Various configuration settings");
   commands["pedestal_cliff"]       = std::make_unique<PedestalCliff>();

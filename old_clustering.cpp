@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
   bool evt_ok=false;
  
 int event_id = 0;
-  while (reader.Next())  
+  while (reader.Next() )  
   {
     std::fill( std::begin( sum_cm ), std::end( sum_cm ), 0 );
     std::fill( std::begin( n_chns ), std::end( n_chns ), 0 );
@@ -190,7 +190,7 @@ int event_id = 0;
   
     if(!hit.empty())
     {
-      Make_Cluster(hit, CSize, ClstTime, ClstPosX, ClstEnergy);
+      Make_Cluster_Old(hit, CSize, ClstTime, ClstPosX, ClstEnergy);
     }
 //  std::cout <<"=============end-clustering====================="<<std::endl;
     for(int j = 0; j<ClstPosX.size(); j++)
