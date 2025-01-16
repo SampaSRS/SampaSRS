@@ -58,7 +58,7 @@ int main(int argc, const char* argv[])
   std::cout << "MinSampa: " << conf.minsampa << std::endl;
   
   Mapping_strips(map_of_strips,conf.mapfpath.c_str()); 
-  
+  std::cout <<conf.mapfpath.c_str()<<std::endl;
 
   // Tree branches
   uint32_t bx_count {};
@@ -107,9 +107,11 @@ int main(int argc, const char* argv[])
       words.push_back(event.copy_waveform(waveform));
     }
 
+    if(n_events%10000==0) std::cout << n_events << std::endl;
     tree.Fill();
     channel.clear();
     sampa.clear();
+    glchn.clear();
     x.clear();
     y.clear();
     words.clear();
