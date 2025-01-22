@@ -97,16 +97,10 @@ int main(int argc, char *argv[])
   
   double MaxtimeseparationXY = 1.0;
 
-  int gl_chn = 0;
-  int max_word = 0;
-  int E_max = 0;
-  int E_int = 0;
-  int T_max = 0;
-  int T_0 = 0;
-  int signal_length = 0;
-  double T_rec = 0;
+  int gl_chn = 0; 
 
-  std::vector <int> CSize ={};
+  std::vector <int> CSizeX ={};
+  std::vector <int> CSizeY ={};
   std::vector <double> ClstPosX ={};
   std::vector <double> ClstEnergyX ={};
   std::vector <double> ClstPosY ={};
@@ -119,7 +113,8 @@ int main(int argc, char *argv[])
   int Entries;
   Entries = reader.GetEntries();
 
-  std::vector <Hits_evt> hits; 
+  std::vector <Hits_evt> hitsx; 
+  std::vector <Hits_evt> hitsy; 
   bool evt_ok=false;
  
   int event_id = 0;
@@ -146,18 +141,13 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
-
-      E_max=0;
-      T_max=0;
-      E_int=0;
-
       // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
       gl_chn = 32*(sampa[i])+channel[i];
       for (size_t j = 2; j < event_words[i].size(); ++j) 
       { 
         if(event_words[i][j] >= 0 && event_words[i][j]<1024)
         {
-          if(event_words[i][j] > map_of_pedestals[gl_chn].first+4*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j])
+          if(event_words[i][j] > map_of_pedestals[gl_chn].first+2*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j])
           { 
             time_hit.push_back(j);  //The sampa structure is [Number of samples, Initial time, words ....] so K must be reduced by 1 
             word_hit.push_back(event_words[i][j]-map_of_pedestals[gl_chn].first-sum_cm[j]/n_chns[j]);
@@ -180,11 +170,19 @@ int main(int argc, char *argv[])
 
         if(time_hit.size() >0)
         {
-          hits.push_back({gl_chn, time_hit, word_hit, x[i], y[i]});
+          if(x[i]>=0)
+            {
+              hitsx.push_back({gl_chn, time_hit, word_hit, x[i]});
+            }
+          if(y[i]>=0)
+            {
+              hitsy.push_back({gl_chn, time_hit, word_hit, y[i]});
+            }
+
         }
         time_hit.clear();
         word_hit.clear();  
-
+        
       }
       
       
@@ -199,31 +197,24 @@ int main(int argc, char *argv[])
 
     }
 
-    if(hits.size()>0)
+    if(hitsx.size()>0)
     {
-      std::sort(hits.begin(), hits.end(), sort_by_chn);
-      Make_2D_Strip_Cluster(hits, CSize, ClstTimeX, ClstPosX, ClstEnergyX, ClstTimeY, ClstPosY, ClstEnergyY);
+      std::sort(hitsx.begin(), hitsx.end(), sort_by_chn);
+      Make_1D_Strip_Cluster(hitsx, CSizeX, ClstTimeX, ClstPosX, ClstEnergyX);
     }
-    hits.clear();
+
+    if(hitsy.size()>0)
+    {
+      std::sort(hitsy.begin(), hitsy.end(), sort_by_chn);
+      Make_1D_Strip_Cluster(hitsy, CSizeY, ClstTimeY, ClstPosY, ClstEnergyY);
+    }
 
 
-    std::vector<MergedEntry> merged = mergeEntries(CSize, ClstTimeX, ClstPosX, ClstEnergyX, ClstTimeY, ClstPosY, ClstEnergyY, MaxtimeseparationXY);
+    hitsx.clear();
+    hitsy.clear();
 
-    // for(int j = 0; j<CSize.size(); j++)
-    // {
-    //   ClstID = j;
-    //   trgID = event_id;
-    //   ClstSize = CSize.at(j);
-    //   xcm = ClstPosX.at(j);
-    //   Ex = ClstEnergyX.at(j);
-    //   ycm = ClstPosY.at(j);
-    //   Ey = ClstEnergyY.at(j);
-    //   TClstX = ClstTimeX.at(j);
-    //   TClstY = ClstTimeY.at(j);
-    //   std::cout <<"Cluster: "<< ClstID <<" "<<ClstSize<<" "<<TClstX<<" "<<xcm<<" "<<Ex<<" "<<TClstY<<" "<<ycm<<" "<<Ey<<std::endl;
-    //   MyTree->Fill();
-    // }
 
+    std::vector<MergedEntry> merged = mergeEntries(CSizeX, ClstTimeX, ClstPosX, ClstEnergyX, CSizeY, ClstTimeY, ClstPosY, ClstEnergyY, MaxtimeseparationXY);
 
     int k=0;
  
@@ -244,13 +235,13 @@ int main(int argc, char *argv[])
       MyTree->Fill();
     }
 
-    CSize.clear();
+    CSizeX.clear();
+    CSizeY.clear();
     ClstTimeX.clear();
     ClstTimeY.clear();
-    CSize.clear();
     ClstEnergyX.clear();
-    ClstPosX.clear();
     ClstEnergyY.clear();
+    ClstPosX.clear();
     ClstPosY.clear();
     merged.clear();
 
