@@ -8,8 +8,8 @@
 #include <bits/stdc++.h> 
 
 #include <sampasrs/mapping.hpp>
+#include <sampasrs/clusters.hpp>
 #include <sampasrs/cluster.hpp>
-
 
 #include "TFile.h"
 #include "TTreeReader.h"
@@ -131,7 +131,7 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < event_words.size(); ++i) {
       for (size_t j = 2; j < event_words[i].size(); ++j) {
         gl_chn = 32*(sampa[i])+channel[i];
-        if(event_words[i][j] < map_of_pedestals[gl_chn].first+3*map_of_pedestals[gl_chn].second) {
+        if(event_words[i][j] < map_of_pedestals[gl_chn].first+2*map_of_pedestals[gl_chn].second) {
           sum_cm[j] += event_words[i][j]-map_of_pedestals[gl_chn].first;
           n_chns[j] ++;
         }
@@ -184,9 +184,6 @@ int main(int argc, char *argv[])
         word_hit.clear();  
         
       }
-      
-      
-      
             
     }
 
