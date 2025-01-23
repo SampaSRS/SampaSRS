@@ -25,7 +25,7 @@ CPMAddPackage("https://github.com/fmtlib/fmt.git#9.0.0")
 CPMAddPackage(
     NAME Boost
     VERSION 1.80.0
-    URL https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.gz
+    URL https://archives.boost.io/release/1.80.0/source/boost_1_80_0.tar.gz
     DOWNLOAD_ONLY True
 )
 
