@@ -142,3 +142,4 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
 
   }
 }
+
