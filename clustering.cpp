@@ -9,7 +9,6 @@
 
 #include <sampasrs/mapping.hpp>
 #include <sampasrs/clusters.hpp>
-#include <sampasrs/cluster.hpp>
 
 
 #include "TFile.h"
