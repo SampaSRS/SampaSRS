@@ -8,7 +8,7 @@
 #include <bits/stdc++.h> 
 
 #include <sampasrs/mapping.hpp>
-#include <sampasrs/cluster.hpp>
+#include <sampasrs/clusters.hpp>
 
 
 #include "TFile.h"

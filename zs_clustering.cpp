@@ -10,7 +10,7 @@
 #include <filesystem>
 
 #include <sampasrs/mapping.hpp>
-#include <sampasrs/cluster.hpp>
+#include <sampasrs/clusters.hpp>
 
 #include "TFile.h"
 #include "TTreeReader.h"
@@ -54,23 +54,37 @@ TTreeReaderValue<std::vector<std::vector<short>>> words(reader, "words"); // tem
 TTreeReaderArray<short> sampa(reader, "sampa");
 TTreeReaderArray<short> channel(reader, "channel");
 TTreeReaderArray<double> x(reader, "x");
+TTreeReaderArray<double> y(reader, "y");
 
 TFile* hfile = new TFile(Clstrootfname.c_str(),"RECREATE");
   
 std::cout << "Generating the Clustered file: " << Clstrootfname << std::endl;
+
 TTree *MyTree = new TTree("evt","evt");
-double E=0;
+double Ex=0;
+double Ey=0;
+double Et=0;
 double xcm=0;
-double TClst=0;
-int ClstSize=0;
+double ycm=0;
+double TClstX=0;
+double TClstY=0;
+int ClstSizeX=0;
+int ClstSizeY=0;
 int ClstID=0;
 unsigned int trgID=0;
+
 MyTree->Branch("trgID",&trgID,"trgID/i");
 MyTree->Branch("ClstID",&ClstID,"ClstID/I");
-MyTree->Branch("ClstSize",&ClstSize,"ClstSize/I");
-MyTree->Branch("TClst",&TClst,"TClst/D");
+MyTree->Branch("ClstSizeX",&ClstSizeX,"ClstSizeX/I");
+MyTree->Branch("ClstSizeY",&ClstSizeY,"ClstSizeY/I");
+MyTree->Branch("TClstX",&TClstX,"TClstX/D");
+MyTree->Branch("TClstY",&TClstY,"TClstY/D");
+MyTree->Branch("Ex",&Ex,"Ex/D");
+MyTree->Branch("Ey",&Ey,"Ey/D");
 MyTree->Branch("xcm",&xcm,"xcm/D");
-MyTree->Branch("E",&E,"E/D");
+MyTree->Branch("ycm",&ycm,"ycm/D");
+MyTree->Branch("Et",&Et,"Et/D");
+
 int Num_words=0;
 int gl_chn=0;
 int max_word=0;
@@ -80,23 +94,30 @@ int T_max=0;
 int j = 0;
 int T_0 = 0;
 
-std::vector <int> CSize ={};
+std::vector <int> CSizeX ={};
+std::vector <int> CSizeY ={};
 std::vector <double> ClstPosX ={};
-std::vector <double> ClstEnergy ={};
-std::vector <double> ClstTime ={};
+std::vector <double> ClstEnergyX ={};
+std::vector <double> ClstPosY ={};
+std::vector <double> ClstEnergyY ={};
+std::vector <double> ClstTimeX ={};
+std::vector <double> ClstTimeY ={};
 
 std::vector <int> time_hit;
 std::vector <int> word_hit;
+
+double MaxtimeseparationXY = 1.0;
 
 
 bool bad_event=false;
 int num_bad_evt = 0;
 
-std::vector <Hits_evt> hits; 
+std::vector <Hits_evt> hitsx; 
+std::vector <Hits_evt> hitsy; 
 int event_id = 0;
   while ( reader.Next() ) 
   {
-    std::cout << "_________new evt__________" << std::endl;
+
     auto& event_words = *words;
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
@@ -104,14 +125,14 @@ int event_id = 0;
       E_max=0;
       T_max=0;
       j=0;
-      gl_chn = 32*(sampa[i]-8)+channel[i];
+      gl_chn = 32*(sampa[i])+channel[i];
       if(map_of_pedestals[gl_chn].first !=0 && map_of_pedestals[gl_chn].second != 1023)
       {
         // std::cout <<"gl_chn: ["<<gl_chn<<"] {"<<map_of_pedestals[gl_chn].first<<"} ";
 
         while(j < event_words[i].size()) {
           Num_words = event_words[i][j];
-          // std::cout << Num_words <<" [ ";
+
             for(size_t k = 0; k<= Num_words; k++) {
               j++;
               if(k == 0)
@@ -122,7 +143,8 @@ int event_id = 0;
                 {
                   if(event_words[i][j] > 0 && event_words[i][j]<1024)
                   {
-                    if(event_words[i][j]-map_of_pedestals[gl_chn].first>2)
+
+                    if(Num_words>5)
                     {
                       time_hit.push_back(T_0+k-1);  //The sampa structure is [Number of samples, Initial time, words ....] so K must be reduced by 1 
                       word_hit.push_back(event_words[i][j]-map_of_pedestals[gl_chn].first);
@@ -135,7 +157,7 @@ int event_id = 0;
                     break; //bad value encountered
                   }
                 }
-              // std::cout<<event_words[i][j]<<" "; 
+
             }
           if(bad_event) {
             bad_event=false;
@@ -143,11 +165,18 @@ int event_id = 0;
             break;
           }
           // std::cout <<" ] ---* ";
-          // std::cout <<T_0<<" "<< E_int <<"*----"<<std::endl;
-          if(time_hit.size() >0)
-          {
-            hits.push_back({gl_chn, time_hit, word_hit, x[i]});
-          }
+
+        if(time_hit.size() >0)
+        {
+          if(x[i]>=0)
+            {
+              hitsx.push_back({gl_chn, time_hit, word_hit, x[i]});
+            }
+          if(y[i]>=0)
+            {
+              hitsy.push_back({gl_chn, time_hit, word_hit, y[i]});
+            }
+        }
           time_hit.clear();
           word_hit.clear();
           j++;
@@ -160,37 +189,59 @@ int event_id = 0;
     
     
     ++event_id;
-    // if(event_id % 10000==0)
-    // {
+    if(event_id % 10000==0)
+    {
       std::cout << event_id <<" events analyzed -- " <<num_bad_evt<<" bad events." <<std::endl;
 
-    // }
-    std::cout<<std::endl;
-    if(hits.size()>0)
-    {
-      std::sort(hits.begin(), hits.end(), sort_by_chn);
-      Make_1D_Strip_Cluster(hits, CSize, ClstTime, ClstPosX, ClstEnergy);
     }
-    hits.clear();
+    
 
-    for(int j = 0; j<ClstPosX.size(); j++)
+    if(hitsx.size()>0)
     {
-      ClstID = j;
+      std::sort(hitsx.begin(), hitsx.end(), sort_by_chn);
+      Make_1D_Strip_Cluster(hitsx, CSizeX, ClstTimeX, ClstPosX, ClstEnergyX);
+    }
+
+    if(hitsy.size()>0)
+    {
+      std::sort(hitsy.begin(), hitsy.end(), sort_by_chn);
+      Make_1D_Strip_Cluster(hitsy, CSizeY, ClstTimeY, ClstPosY, ClstEnergyY);
+    }
+
+
+    hitsx.clear();
+    hitsy.clear();
+
+    std::vector<MergedEntry> merged = mergeEntries(CSizeX, ClstTimeX, ClstPosX, ClstEnergyX, CSizeY, ClstTimeY, ClstPosY, ClstEnergyY, MaxtimeseparationXY);
+
+    int k=0;
+ 
+    for (const auto& entry : merged)
+    {
+      ClstID = k;
       trgID = event_id;
-      ClstSize = CSize.at(j);
-      xcm = ClstPosX.at(j);
-      E = ClstEnergy.at(j);
-      TClst = ClstTime.at(j);
-      std::cout <<"Cluster: "<< ClstID <<" "<<ClstSize<<" "<<TClst<<" "<<xcm<<" "<<E<<std::endl;
+      ClstSizeX = entry.CSizex;
+      ClstSizeY = entry.CSizey;
+      TClstX = entry.TClstX;
+      TClstY = entry.TClstY;
+      Ex = entry.Ex;
+      Ey = entry.Ey;
+      xcm = entry.xcm;
+      ycm = entry.ycm;
+      Et = entry.Et;
+      k++;
       MyTree->Fill();
     }
 
-    CSize.clear();
-    ClstTime.clear();
-    CSize.clear();
-    ClstEnergy.clear();
+    CSizeX.clear();
+    CSizeY.clear();
+    ClstTimeX.clear();
+    ClstTimeY.clear();
+    ClstEnergyX.clear();
+    ClstEnergyY.clear();
     ClstPosX.clear();
-    
+    ClstPosY.clear();
+    merged.clear();
 
 
   } 
