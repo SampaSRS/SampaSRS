@@ -72,8 +72,8 @@ std::vector <double> &ClustPos,std::vector <double> &ClustEnergy)
 
 {  
   double pitch = 0.390625; //pitch real = 0.390625
-  const int max_time_window = 8; //maximum time difference before the maximum to be checked at 20MSps, 1 = 50ns
-  const int Min_Number_words = 5; //Minimum number of ADC samples to consider a cluster valid  
+  const int max_time_window = 4; //maximum time difference before the maximum to be checked at 20MSps, 1 = 50ns
+  const int Min_Number_words = 4; //Minimum number of ADC samples to consider a cluster valid  
   double xcm=0;
   double E_total=0;
   int ClstID=0;

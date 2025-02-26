@@ -18,6 +18,25 @@
 
 using namespace std;
 
+ double calculateMean(const std::vector<double>& data) 
+ {
+    double sum = std::accumulate(data.begin(), data.end(), 0.0);
+    return sum / data.size();
+ }
+
+  double calculateStdDev(const std::vector<double>& data) 
+  {
+    double mean = calculateMean(data);
+    double variance = 0.0;
+    
+    for (double value : data) {
+        variance += (value - mean) * (value - mean);
+    }
+    
+ return std::sqrt(variance / (data.size() - 1)); // For sample standard deviation
+  }
+
+
 
 
 int main(int argc, char *argv[])
@@ -42,7 +61,7 @@ int main(int argc, char *argv[])
 
 
   auto input_path = std::filesystem::path(file_name);
-  auto Clstrootfname = input_path.replace_extension("Clst.root").string();
+  auto Clstrootfname = input_path.replace_extension("Maxtimewindow4_2pitch_minNwords4_Clst.root").string();
 
   TFile file(file_name.data(), "READ");
   TTreeReader reader("waveform", &file);
@@ -74,6 +93,8 @@ int main(int argc, char *argv[])
 
   std::vector <int> time_hit;
   std::vector <int> word_hit;
+  std::vector<double> baseline_vector;
+
   bool bad_event=false;
   int num_bad_evt = 0;
 
@@ -109,6 +130,8 @@ int main(int argc, char *argv[])
   std::vector <double> ClstTimeY ={};
   std::array<double, 1024> n_chns={};
   std::array<double, 1024> sum_cm={};
+  std::array<double, 512> mean_bs={};
+  std::array<double, 512> std_bs={};
 
   int Entries;
   Entries = reader.GetEntries();
@@ -119,10 +142,16 @@ int main(int argc, char *argv[])
  
   int event_id = 0;
 
+
+
+
   while ( reader.Next() )  
   {
     std::fill( std::begin( sum_cm ), std::end( sum_cm ), 0 );
     std::fill( std::begin( n_chns ), std::end( n_chns ), 0 );
+    // std::fill( std::begin( mean_bs ), std::end( mean_bs ), 0 );
+    // std::fill( std::begin( std_bs ), std::end( std_bs ), 0 );
+    
     
     auto& event_words = *words;
     
@@ -139,6 +168,21 @@ int main(int argc, char *argv[])
     }
 
 
+      // for (size_t i = 0; i < event_words.size(); ++i) 
+      // {
+      //   gl_chn = 32*(sampa[i])+channel[i];
+      //   for (size_t j = 2; j < 15; ++j) 
+      //   {
+      //     baseline_vector.push_back(event_words[i][j]);
+      //   }
+      //   mean_bs[gl_chn] = calculateMean(baseline_vector);
+      //   std_bs[gl_chn] = calculateStdDev(baseline_vector);
+      //   // std::cout << mean_bs[gl_chn] <<" "<< std_bs[gl_chn] << std::endl;
+      //   baseline_vector.clear();
+      // }
+    
+
+
     for (size_t i = 0; i < event_words.size(); ++i) 
     {
       // std::cout << channel[i] <<" "<<sampa[i]<<std::endl;
@@ -148,6 +192,7 @@ int main(int argc, char *argv[])
         if(event_words[i][j] >= 0 && event_words[i][j]<1024)
         {
           if(event_words[i][j] > map_of_pedestals[gl_chn].first+2*map_of_pedestals[gl_chn].second+sum_cm[j]/n_chns[j])
+          // if(event_words[i][j] > mean_bs[gl_chn]+3*std_bs[gl_chn]+sum_cm[j]/n_chns[j] && std_bs[gl_chn] != 0)
           { 
             time_hit.push_back(j);  //The sampa structure is [Number of samples, Initial time, words ....] so K must be reduced by 1 
             word_hit.push_back(event_words[i][j]-map_of_pedestals[gl_chn].first-sum_cm[j]/n_chns[j]);
@@ -188,7 +233,7 @@ int main(int argc, char *argv[])
     }
 
     ++event_id;
-    if(event_id % 500==0)
+    if(event_id % 5000==0)
     {
       std::cout << "Progress: "<<(double)(event_id*100/Entries)<<"% - "<< event_id <<" events analyzed -- " <<num_bad_evt<<" bad events." <<std::endl;
 
