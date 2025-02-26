@@ -117,16 +117,18 @@ int event_id = 0;
     for (size_t i = 0; i < event_words.size(); ++i) //loop nos canais
     {
       
-      gl_chn = 32*(sampa[i]-8)+channel[i];
+      gl_chn = 32*(sampa[i])+channel[i];
       auto& pedestal = channels[gl_chn];
       
     // Fill info on first occurrence
-      if (pedestal.count == 0) {
+      if (pedestal.count == 0) 
+      {
         pedestal.sampa = sampa[i];
         pedestal.channel = channel[i];
       }
 
-          for (size_t j = 2; j < event_words[i].size(); ++j) {
+      for (size_t j = 2; j < event_words[i].size(); ++j) 
+      {
         pedestal.sum += event_words[i][j]-map_of_pedestals[gl_chn].first;
         pedestal.sum_squared += std::pow(event_words[i][j]-map_of_pedestals[gl_chn].first, 2);
         ++pedestal.count;
@@ -139,8 +141,6 @@ int event_id = 0;
         {
           time_wave.at(j-2) += (event_words[i][j]-map_of_pedestals[gl_chn].first)/(double)event_words.size();  //cria um vetor temporal e adiciona em cada coordenada de tempo valor-baseline
           // std::cout <<gl_chn<<" "<<j<<" "<< event_words[i][j]<<" "<<map_of_pedestals[gl_chn].first<<" "<<event_words[i][j]-map_of_pedestals[gl_chn].first<<std::endl;
-
-          
         }
       }
     }

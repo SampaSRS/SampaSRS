@@ -305,7 +305,7 @@ namespace commands {
   inline uint32_t sampa_reg(unsigned char hybrid, unsigned char sampa, unsigned char reg)
   {
     // unsigned char hybrid = 3;
-    std::cout<<std::hex<< 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg) <<std::endl;
+    // std::cout<<std::hex<< 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg) <<std::endl;
     return 0xf0f00000 +(2*hybrid << 24u) + (sampa << 6u) + get_bit_range<uint32_t, 0, 6>(reg);
   }
 
@@ -324,7 +324,7 @@ namespace commands {
   {
     // broadcast to all sampas
     Requests requests;
-    for(unsigned int t = 0; t < 10; t++)
+    for(unsigned int t = 0; t < 2; t++) //repeat twice the operation
     {
       if (sampa > 0) {
         return {sampa_request(Request::Type::WriteBurst, sampa_reg(hybrid, sampa, reg), data)};

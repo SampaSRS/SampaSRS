@@ -96,13 +96,6 @@ void make_plot(const char *filename)
 
     std::cout<<"Noise mean: "<< meany <<"/Noise standard deviation: "<<sigmay<<" "<<std::endl;
     
-    // latex.SetTextSize(0.05);
-    // latex.SetTextAlign(13);  //align at top
-    // sprintf(buf,"Mean = %4.1f",meany);
-    // latex.DrawLatex(60,14,buf); //Escreve sigma na imagem
-    // sprintf(buf,"#sigma = %4.1f",sigmay);
-    // latex.DrawLatex(60,13,buf); //Escreve sigma na imagem
-
     c1->SaveAs(imgfname.c_str());
 
     }
@@ -143,6 +136,8 @@ int main(int argc, const char* argv[])
 
   int const NumEvts = 500; // Number of events for pedestal file
 
+  int hybrid;
+
   int event_id = 0;
   while (reader.Next() && event_id < NumEvts) {
     auto& event_words = *words;
@@ -178,18 +173,22 @@ int main(int argc, const char* argv[])
   ZSOutFile << "reset_sampas" << "\n";
   ZSOutFile << "trigger_external" << "\n";
   ZSOutFile << "pretrigger 25" << "\n";
-  ZSOutFile << "word_length 40" << "\n";
+  ZSOutFile << "word_length 1000" << "\n";
   
-  for (auto& [global_channel, pedestal] : channels) {
+  for (auto& [global_channel, pedestal] : channels) 
+  {
     const double mean = pedestal.sum / static_cast<double>(pedestal.count);
     const double var = pedestal.sum_squared / static_cast<double>(pedestal.count) - std::pow(mean, 2);
+
+    hybrid = (pedestal.sampa*32+pedestal.channel)/128;
+
     TxtOutFile << global_channel << " " << mean << " " << std::sqrt(var) << "\n";
-    //ZS cut = baseline+3sigma ATTENTION: SAMPA index is sent from 8 to 11 but needs to be written from 0 to 4 (see sampa-8).
+    
     if(var==0){ //channel locked - suppress it at maximum
-      if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 1023 << "\n"; 
+      if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<<hybrid<<" "<< pedestal.sampa << " " << pedestal.channel << " " << 1023 << "\n"; 
     }
     else {
-      if(pedestal.sampa-8>=0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<u_int32_t>(mean+5*std::sqrt(var) )<< "\n";
+      if(pedestal.sampa>=0) ZSOutFile <<"set_zero_suppression "<<hybrid<<" "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<u_int32_t>(mean+2*std::sqrt(var) )<< "\n";
             // if(pedestal.sampa>=0 && pedestal.channel==0) ZSOutFile <<"set_zero_suppression "<< pedestal.sampa << " " << pedestal.channel << " " << 200 << "\n";
       // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa << " " << pedestal.channel << " " << static_cast<int>(mean)<< "\n";
       // ZSOutFile <<"pedestal_subtraction "<< pedestal.sampa-8 << " " << pedestal.channel << " " << 50 << "\n";
