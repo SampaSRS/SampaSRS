@@ -1,13 +1,13 @@
 stop
 reset_fec
 reset_sampas
-trigger_external
+#trigger_external
 
-#trigger_1hz
-word_length 100    
+trigger_1hz
+word_length 200    
 
-pretrigger 50
-pretrigger 50
+#pretrigger 50
+#pretrigger 50
 
 
 reduce_links 17
